@@ -294,7 +294,7 @@ class ModuleAST {
   std::vector<FunctionAST> functions_;
 };
 
-void dump_module_ast(ModuleAST& ast);
+void dump_module_ast(const ModuleAST& ast);
 
 } // namespace toy
 
