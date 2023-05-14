@@ -18,8 +18,7 @@ class StringViewLineReader {
     auto begin = str_.begin();
     while (!str_.empty() && str_.front() != '\0' && str_.front() != '\n')
       str_ = str_.substr(1);
-    if (str_.empty() || str_.front() == '\0') return "";
-    str_ = str_.substr(1);
+    if (!str_.empty()) str_ = str_.substr(1);
     return {begin, str_.begin()};
   }
 

@@ -59,6 +59,7 @@ else ()
 endif ()
 
 set(TOY_MLIR_SOURCES
+  lib/ast/ast.cpp
   lib/lexer/lexer.cpp
   lib/parser/parser.cpp)
 set(TOY_MLIR_HEADERS

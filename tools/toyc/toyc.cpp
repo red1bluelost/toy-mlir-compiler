@@ -45,8 +45,15 @@ int main(const int argc, const char* argv[]) {
   switch (action) {
   case Action::DumpTokens: toy::dump_tokens(std::move(lexer)); break;
   case Action::DumpAST: {
+    toy::Parser parser(std::move(lexer));
+    auto        module_ast = parser.parse_module();
+    if (!module_ast) return EXIT_FAILURE;
+    toy::dump_module_ast(*module_ast);
+    break;
   }
   case Action::None: {
+    fmt::println("No action specified (parsing only?), use -emit=<action>");
+    break;
   }
   }
 

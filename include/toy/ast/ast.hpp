@@ -32,18 +32,18 @@ class ExprAST {
   };
 
   constexpr ExprAST(ExprASTKind kind, Location location)
-      : kind(kind)
-      , location(location) {}
+      : kind_(kind)
+      , location_(location) {}
 
   constexpr virtual ~ExprAST() = default;
 
-  [[nodiscard]] constexpr ExprASTKind getKind() const { return kind; }
+  [[nodiscard]] constexpr ExprASTKind getKind() const { return kind_; }
 
-  [[nodiscard]] const Location& loc() const { return location; }
+  [[nodiscard]] const Location& location() const { return location_; }
 
  private:
-  const ExprASTKind kind;
-  Location          location;
+  const ExprASTKind kind_;
+  Location          location_;
 };
 
 /// Block-list of expressions.
@@ -69,10 +69,10 @@ class NumberExprAST : public ExprAST {
 /// Expression class for a literal value.
 class LiteralExprAST : public ExprAST {
  public:
-  constexpr LiteralExprAST(
+  LiteralExprAST(
       Location                              loc,
       std::vector<std::unique_ptr<ExprAST>> values,
-      std::vector<i64>                      dims
+      llvm::SmallVector<i64, 2>             dims
   )
       : ExprAST(ExprASTKind::Literal, loc)
       , values_(std::move(values))
@@ -91,7 +91,7 @@ class LiteralExprAST : public ExprAST {
 
  private:
   std::vector<std::unique_ptr<ExprAST>> values_;
-  std::vector<i64>                      dims_;
+  llvm::SmallVector<i64, 2>             dims_;
 };
 
 /// Expression class for referencing a variable, like "a".
@@ -118,16 +118,16 @@ class VarDeclExprAST : public ExprAST {
       Location                 loc,
       std::string              name,
       VarType                  type,
-      std::unique_ptr<ExprAST> initVal
+      std::unique_ptr<ExprAST> init_val
   )
       : ExprAST(ExprASTKind::VarDecl, loc)
       , name_(std::move(name))
       , type_(std::move(type))
-      , init_val_(std::move(initVal)) {}
+      , init_val_(std::move(init_val)) {}
 
   [[nodiscard]] constexpr std::string_view name() const { return name_; }
 
-  [[nodiscard]] const ExprAST* init_val() const { return init_val_.get(); }
+  [[nodiscard]] constexpr const ExprAST& init_val() const { return *init_val_; }
 
   [[nodiscard]] constexpr const VarType& type() const { return type_; }
 
@@ -144,20 +144,18 @@ class VarDeclExprAST : public ExprAST {
 /// Expression class for a return operator.
 class ReturnExprAST : public ExprAST {
  public:
-  ReturnExprAST(Location loc, std::optional<std::unique_ptr<ExprAST>> expr)
+  explicit ReturnExprAST(Location loc, std::unique_ptr<ExprAST> expr = nullptr)
       : ExprAST(ExprASTKind::Return, loc)
       , expr_(std::move(expr)) {}
 
-  [[nodiscard]] constexpr std::optional<const ExprAST*> expr() const {
-    return expr_.has_value() ? std::optional(expr_->get()) : std::nullopt;
-  }
+  [[nodiscard]] constexpr const ExprAST* expr() const { return expr_.get(); }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
     return c->getKind() == ExprASTKind::Return;
   }
 
  private:
-  std::optional<std::unique_ptr<ExprAST>> expr_;
+  std::unique_ptr<ExprAST> expr_;
 };
 
 /// Expression class for a binary operator.
@@ -176,9 +174,9 @@ class BinaryExprAST : public ExprAST {
 
   [[nodiscard]] constexpr u8 op() const { return op_; }
 
-  [[nodiscard]] const ExprAST* lhs() const { return lhs_.get(); }
+  [[nodiscard]] constexpr const ExprAST& lhs() const { return *lhs_; }
 
-  [[nodiscard]] const ExprAST* rhs() const { return rhs_.get(); }
+  [[nodiscard]] constexpr const ExprAST& rhs() const { return *rhs_; }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
     return c->getKind() == ExprASTKind::BinOp;
@@ -192,12 +190,12 @@ class BinaryExprAST : public ExprAST {
 /// Expression class for function calls.
 class CallExprAST : public ExprAST {
  public:
-  [[nodiscard]] constexpr CallExprAST(
+  constexpr CallExprAST(
       Location                              loc,
       std::string                           callee,
       std::vector<std::unique_ptr<ExprAST>> args
   )
-      : ExprAST(ExprASTKind::Call, std::move(loc))
+      : ExprAST(ExprASTKind::Call, loc)
       , callee_(std::move(callee))
       , args_(std::move(args)) {}
 
@@ -220,11 +218,11 @@ class CallExprAST : public ExprAST {
 /// Expression class for builtin print calls.
 class PrintExprAST : public ExprAST {
  public:
-  PrintExprAST(Location loc, std::unique_ptr<ExprAST> arg)
+  explicit PrintExprAST(Location loc, std::unique_ptr<ExprAST> arg)
       : ExprAST(ExprASTKind::Print, loc)
       , arg_(std::move(arg)) {}
 
-  [[nodiscard]]  const ExprAST* arg() const { return arg_.get(); }
+  [[nodiscard]] const ExprAST& arg() const { return *arg_; }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
     return c->getKind() == ExprASTKind::Print;
@@ -233,6 +231,70 @@ class PrintExprAST : public ExprAST {
  private:
   std::unique_ptr<ExprAST> arg_;
 };
+
+/// This class represents the "prototype" for a function, which captures its
+/// name, and its argument names (thus implicitly the number of arguments the
+/// function takes).
+class PrototypeAST {
+ public:
+  explicit PrototypeAST(
+      Location                                      location,
+      std::string                                   name,
+      std::vector<std::unique_ptr<VariableExprAST>> args
+  )
+      : location_(location)
+      , name_(std::move(name))
+      , args_(std::move(args)) {}
+
+  [[nodiscard]] const Location& location() const { return location_; }
+
+  [[nodiscard]] std::string_view name() const { return name_; }
+
+  [[nodiscard]] std::span<const std::unique_ptr<VariableExprAST>> args() const {
+    return args_;
+  }
+
+ private:
+  Location                                      location_;
+  std::string                                   name_;
+  std::vector<std::unique_ptr<VariableExprAST>> args_;
+};
+
+/// This class represents a function definition itself.
+class FunctionAST {
+ public:
+  explicit FunctionAST(std::unique_ptr<PrototypeAST> proto, ExprASTList body)
+      : proto_(std::move(proto))
+      , body_(std::move(body)) {}
+
+  [[nodiscard]] const PrototypeAST& proto() const { return *proto_; }
+
+  [[nodiscard]] std::span<const std::unique_ptr<ExprAST>> body() const {
+    return body_;
+  }
+
+ private:
+  std::unique_ptr<PrototypeAST> proto_;
+  ExprASTList                   body_;
+};
+
+/// This class represents a list of functions to be processed together
+class ModuleAST {
+ public:
+  using FuncVector = std::vector<FunctionAST>;
+
+  explicit ModuleAST(std::vector<FunctionAST> functions)
+      : functions_(std::move(functions)) {}
+
+  [[nodiscard]] std::span<const FunctionAST> functions() const {
+    return functions_;
+  }
+
+ private:
+  std::vector<FunctionAST> functions_;
+};
+
+void dump_module_ast(ModuleAST& ast);
 
 } // namespace toy
 

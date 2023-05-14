@@ -10,6 +10,7 @@ namespace toy {
 
 // List of Token returned by the lexer.
 enum class Token : i32 {
+  Comma             = ',',
   Semicolon         = ';',
   Colon             = ':',
   ParenOpen         = '(',
@@ -18,6 +19,9 @@ enum class Token : i32 {
   CurlyBracketClose = '}',
   SqrBracketOpen    = '[',
   SqrBracketClose   = ']',
+  AngleBracketOpen  = '<',
+  AngleBracketClose = '>',
+  Assignment        = '=',
 
   EndOfFile = -1,
 
@@ -51,7 +55,7 @@ class Lexer {
   Lexer& operator=(Lexer&& lexer) = default;
 
   /// Look at the current token in the stream.
-  Token current_token() { return current_token_; }
+  [[nodiscard]] Token current_token() const { return current_token_; }
 
   /// Move to the next token in the stream and return it.
   Token next_token() { return current_token_ = process_token(); }
@@ -64,7 +68,7 @@ class Lexer {
   }
 
   /// Return the current identifier (prereq: current_token_ == Identifier)
-  std::string_view identifier() {
+  [[nodiscard]] std::string_view identifier() const {
     assert(current_token_ == Token::Identifier);
     return identifier_;
   }
@@ -76,19 +80,19 @@ class Lexer {
   }
 
   /// Return the current number (prereq: current_token_ == Number)
-  double value() {
+  [[nodiscard]] f64 value() const {
     assert(current_token_ == Token::Number);
     return value_;
   }
 
   /// Return the location for the beginning of the current token.
-  Location last_location() { return last_location_; }
+  [[nodiscard]] Location last_location() const { return last_location_; }
 
   // Return the current line in the file.
-  i32 current_line() { return current_line_; }
+  [[nodiscard]] i32 current_line() const { return current_line_; }
 
   // Return the current column in the file.
-  i32 current_col() { return current_col_; }
+  [[nodiscard]] i32 current_col() const { return current_col_; }
 
  private:
   /// Return the next character from the stream. This manages the buffer for the
@@ -108,7 +112,7 @@ class Lexer {
   std::string identifier_;
 
   /// If the current Token is a number, this contains the value.
-  double value_ = 0;
+  f64 value_ = 0;
 
   /// The last value returned by process_next_char(). We need to keep it around
   /// as we always need to read ahead one character to decide when to end a
