@@ -8,6 +8,6 @@ target_link_libraries(
   toyc
   PRIVATE
   toy_mlir_library
+  range-v3
   ${llvm_libs}
-  MLIRSupport
 )

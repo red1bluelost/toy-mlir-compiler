@@ -1,0 +1,12 @@
+# User defined generic function that operates on unknown shaped arguments.
+fn multiply_transpose(a, b) {
+  return transpose(a) * transpose(b);
+}
+
+fn main() {
+  let a: <2, 3> = [[1, 2, 3], [4, 5, 6]];
+  let b: <2, 3> = [1, 2, 3, 4, 5, 6];
+  let c = multiply_transpose(a, b);
+  let d = multiply_transpose(b, a);
+  print(d);
+}

@@ -48,6 +48,7 @@ class ExprAST {
 
 /// Block-list of expressions.
 using ExprASTList = std::vector<std::unique_ptr<ExprAST>>;
+using ConstExprASTSpan = std::span<const std::unique_ptr<ExprAST>>;
 
 /// Expression class for numeric literals like "1.0".
 class NumberExprAST : public ExprAST {

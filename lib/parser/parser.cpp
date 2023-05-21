@@ -18,7 +18,7 @@ std::unique_ptr<ReturnExprAST> Parser::parse_return() {
   lexer.consume(Token::Return);
 
   // return takes an optional argument
-  if (lexer.current_token() != Token::Semicolon)
+  if (lexer.current_token() == Token::Semicolon)
     return std::make_unique<ReturnExprAST>(loc);
 
   auto expr = parse_expression();

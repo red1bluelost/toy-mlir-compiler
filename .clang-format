@@ -90,7 +90,7 @@ IncludeCategories:
     Priority: 1
   - Regex:    '^".*.h(pp)?'
     Priority: 2
-  - Regex:    '^<(llvm|llvm-c|clang|clang-c)/'
+  - Regex:    '^<(llvm|llvm-c|clang|clang-c|mlir|mlir-c)/'
     Priority: 3
   - Regex:    '^(<(gtest|gmock|isl|json)/)'
     Priority: 4
