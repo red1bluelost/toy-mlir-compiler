@@ -1,0 +1,6 @@
+fn main() {
+  let a: <2,1> = [1, 2];
+  let b: <2,1> = a;
+  let c: <2,1> = b;
+  print(c);
+}

@@ -67,7 +67,8 @@ set(TOY_MLIR_SOURCES
   lib/dialect/dialect.cpp
   lib/dialect/mlir_gen.cpp
   lib/lexer/lexer.cpp
-  lib/parser/parser.cpp)
+  lib/parser/parser.cpp
+  lib/transforms/simplify.cpp)
 set(TOY_MLIR_HEADERS
   include/toy/ast/ast.hpp
   include/toy/dialect/dialect.hpp
@@ -79,9 +80,11 @@ set(TOY_MLIR_HEADERS
   include/toy/util/line_reader.hpp
   include/toy/util/string_view_line_reader.hpp)
 
+include_directories(${PROJECT_SOURCE_DIR}/include/)
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS})
 
 add_subdirectory(include/toy/dialect)
+add_subdirectory(lib/transforms)
 
 add_library(
   toy_mlir_library
@@ -91,8 +94,9 @@ add_library(
 target_include_directories(
   toy_mlir_library
   PUBLIC
-  ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/include/
   ${CMAKE_CURRENT_BINARY_DIR}/include/
+  ${CMAKE_CURRENT_BINARY_DIR}/lib_include/
 )
 target_link_libraries(
   toy_mlir_library
@@ -103,9 +107,15 @@ target_link_libraries(
   ${llvm_libs}
   MLIRIR
   MLIRParser
+  MLIRPass
   MLIRSupport
+  MLIRTransforms
 )
-add_dependencies(toy_mlir_library toy_ops_inc_gen)
+add_dependencies(
+  toy_mlir_library
+  toy_ops_inc_gen
+  toy_simplify_inc_gen
+)
 
 add_subdirectory(tools)
 

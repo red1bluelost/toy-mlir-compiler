@@ -14,6 +14,8 @@
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/OwningOpRef.h>
 #include <mlir/Parser/Parser.h>
+#include <mlir/Pass/PassManager.h>
+#include <mlir/Transforms/Passes.h>
 
 #include <range/v3/algorithm/contains.hpp>
 
@@ -60,6 +62,8 @@ cl::opt<enum Action> action(
     )
 );
 
+cl::opt<bool> enable_opt("opt", cl::desc("Enable optimizations"));
+
 int main_dump_tokens(std::unique_ptr<llvm::MemoryBuffer> file) {
   toy::StringViewLineReader line_reader{file->getBuffer()};
   toy::Lexer                lexer{input_filename, line_reader};
@@ -104,16 +108,21 @@ int main_dump_mlir(std::unique_ptr<llvm::MemoryBuffer> file) {
   case InputType::Deduce: llvm_unreachable("deduce should not be here");
   }
   if (!mod) return EXIT_FAILURE;
+
+  if (enable_opt) {
+    mlir::PassManager pm{mod.get()->getName()};
+    if (failed(mlir::applyPassManagerCLOptions(pm))) return EXIT_FAILURE;
+
+    pm.addNestedPass<mlir::toy::FuncOp>(mlir::createCanonicalizerPass());
+    if (failed(pm.run(*mod))) return EXIT_FAILURE;
+  }
+
   mod->dump();
   return EXIT_SUCCESS;
 }
 
-} // namespace
-
-int main(const int argc, const char* argv[]) {
-  mlir::registerAsmPrinterCLOptions();
-  mlir::registerMLIRContextCLOptions();
-  cl::ParseCommandLineOptions(argc, argv, "toy compiler\n");
+bool validate_arguments() {
+  bool is_valid = true;
 
   // Deduce file type or error for bad arguments
   if (input_type == InputType::Deduce) {
@@ -123,22 +132,43 @@ int main(const int argc, const char* argv[]) {
                                   .Case(".mlir", InputType::MLIR)
                                   .Case(".toy", InputType::Toy)
                                   .Default(std::nullopt);
-    if (!deduced_input_type.has_value()) {
+    if (!deduced_input_type) {
       input_type.error(llvm::Twine(
           "cannot deduce input type from filename: ", input_filename
       ));
-      return EXIT_FAILURE;
+      is_valid = false;
     }
     input_type = *deduced_input_type;
   }
 
-  if (input_type == InputType::MLIR
-      && ranges::contains(
-          llvm::ArrayRef{Action::DumpTokens, Action::DumpAST}, action
-      )) {
+  bool does_not_use_mlir = ranges::contains(
+      llvm::ArrayRef{Action::DumpTokens, Action::DumpAST}, action
+  );
+
+  if (input_type == InputType::MLIR && does_not_use_mlir) {
     action.error("Cannot dump tokens or dump ast when input is mlir");
-    return EXIT_FAILURE;
+    is_valid = false;
   }
+
+  if (enable_opt && does_not_use_mlir) {
+    enable_opt.error(
+        "Optimization does not run for dumping tokens or dumping ast"
+    );
+    is_valid = false;
+  }
+
+  return is_valid;
+}
+
+} // namespace
+
+int main(const int argc, const char* argv[]) {
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
+  cl::ParseCommandLineOptions(argc, argv, "toy compiler\n");
+
+  if (!validate_arguments()) return EXIT_FAILURE;
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> file_or_err =
       llvm::MemoryBuffer::getFileOrSTDIN(input_filename);

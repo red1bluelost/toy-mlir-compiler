@@ -224,6 +224,8 @@ def ReshapeOp : Toy_Op<"reshape", [Pure]> {
   let assemblyFormat = [{
     `(` $input `:` type($input) `)` attr-dict `->` type(results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -282,6 +284,7 @@ def TransposeOp : Toy_Op<"transpose", [Pure]> {
   let builders = [OpBuilder<(ins "Value":$input)>];
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 #endif // TOY_DIALECT_OPS_TD
