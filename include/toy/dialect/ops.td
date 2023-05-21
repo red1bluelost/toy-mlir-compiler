@@ -62,7 +62,7 @@ def ConstantOp : Toy_Op<"constant", [Pure]> {
 // AddOp
 //===----------------------------------------------------------------------===//
 
-def AddOp : Toy_Op<"add"> {
+def AddOp : Toy_Op<"add", [Pure]> {
   let summary = "element-wise addition operation";
   let description = [{
     The "add" operation performs element-wise addition between two tensors.
@@ -74,6 +74,27 @@ def AddOp : Toy_Op<"add"> {
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$lhs, "::mlir::Value":$rhs)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// MulOp
+//===----------------------------------------------------------------------===//
+
+def MulOp : Toy_Op<"mul", [Pure]> {
+  let summary = "element-wise multiplication operation";
+  let description = [{
+    The "mul" operation performs element-wise multiplication between two
+    tensors. The shapes of the tensor operands are expected to match.
+  }];
+
+  let arguments = (ins F64Tensor:$lhs, F64Tensor:$rhs);
+  let results = (outs F64Tensor);
+
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs)>
   ];
 
   let hasCustomAssemblyFormat = 1;
@@ -167,27 +188,6 @@ def GenericCallOp : Toy_Op<"generic_call"> {
 }
 
 //===----------------------------------------------------------------------===//
-// MulOp
-//===----------------------------------------------------------------------===//
-
-def MulOp : Toy_Op<"mul"> {
-  let summary = "element-wise multiplication operation";
-  let description = [{
-    The "mul" operation performs element-wise multiplication between two
-    tensors. The shapes of the tensor operands are expected to match.
-  }];
-
-  let arguments = (ins F64Tensor:$lhs, F64Tensor:$rhs);
-  let results = (outs F64Tensor);
-
-  let builders = [
-    OpBuilder<(ins "Value":$lhs, "Value":$rhs)>
-  ];
-
-  let hasCustomAssemblyFormat = 1;
-}
-
-//===----------------------------------------------------------------------===//
 // PrintOp
 //===----------------------------------------------------------------------===//
 
@@ -207,7 +207,7 @@ def PrintOp : Toy_Op<"print"> {
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
-def ReshapeOp : Toy_Op<"reshape"> {
+def ReshapeOp : Toy_Op<"reshape", [Pure]> {
   let summary = "tensor reshape operation";
   let description = [{
     Reshape operation is transforming its input tensor into a new tensor with
@@ -230,8 +230,7 @@ def ReshapeOp : Toy_Op<"reshape"> {
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
-def ReturnOp : Toy_Op<"return", [Pure, HasParent<"FuncOp">,
-                                 Terminator]> {
+def ReturnOp : Toy_Op<"return", [Pure, HasParent<"FuncOp">, Terminator]> {
   let summary = "return operation";
   let description = [{
     The "return" operation represents a return operation within a function.
@@ -270,7 +269,7 @@ def ReturnOp : Toy_Op<"return", [Pure, HasParent<"FuncOp">,
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
-def TransposeOp : Toy_Op<"transpose"> {
+def TransposeOp : Toy_Op<"transpose", [Pure]> {
   let summary = "transpose operation";
 
   let arguments = (ins F64Tensor:$input);
