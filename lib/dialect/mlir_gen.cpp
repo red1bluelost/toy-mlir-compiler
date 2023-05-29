@@ -165,6 +165,8 @@ class MLIRGenImpl {
       ));
     }
 
+    if (func_ast.proto().name() != "main") function.setPrivate();
+
     return function;
   }
 

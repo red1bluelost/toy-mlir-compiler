@@ -1,5 +1,6 @@
 #include "toy/dialect/dialect.hpp"
 #include "toy/dialect/mlir_gen.hpp"
+#include "toy/dialect/passes.hpp"
 #include "toy/lexer/lexer.hpp"
 #include "toy/parser/parser.hpp"
 #include "toy/util/string_view_line_reader.hpp"
@@ -113,7 +114,13 @@ int main_dump_mlir(std::unique_ptr<llvm::MemoryBuffer> file) {
     mlir::PassManager pm{mod.get()->getName()};
     if (failed(mlir::applyPassManagerCLOptions(pm))) return EXIT_FAILURE;
 
-    pm.addNestedPass<mlir::toy::FuncOp>(mlir::createCanonicalizerPass());
+    // Inline all functions into main and then delete them.
+    pm.addPass(mlir::createInlinerPass());
+
+    mlir::OpPassManager& op_pm = pm.nest<mlir::toy::FuncOp>();
+    op_pm.addPass(mlir::toy::createShapeInferencePass());
+    op_pm.addPass(mlir::createCanonicalizerPass());
+    op_pm.addPass(mlir::createCSEPass());
     if (failed(pm.run(*mod))) return EXIT_FAILURE;
   }
 

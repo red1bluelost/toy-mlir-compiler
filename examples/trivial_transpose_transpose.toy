@@ -1,3 +1,7 @@
 fn transpose_transpose(x) {
   return transpose(transpose(x));
 }
+
+fn main() {
+  print(transpose_transpose([[1, 2, 3, 4], [5, 6, 7, 8]]));
+}

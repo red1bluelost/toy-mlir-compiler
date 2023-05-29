@@ -66,6 +66,7 @@ set(TOY_MLIR_SOURCES
   lib/ast/ast.cpp
   lib/dialect/dialect.cpp
   lib/dialect/mlir_gen.cpp
+  lib/dialect/shape_interface_pass.cpp
   lib/lexer/lexer.cpp
   lib/parser/parser.cpp
   lib/transforms/simplify.cpp)
@@ -73,6 +74,8 @@ set(TOY_MLIR_HEADERS
   include/toy/ast/ast.hpp
   include/toy/dialect/dialect.hpp
   include/toy/dialect/mlir_gen.hpp
+  include/toy/dialect/passes.hpp
+  include/toy/dialect/shape_inference_interface.hpp
   include/toy/core/types.hpp
   include/toy/lexer/lexer.hpp
   include/toy/lexer/location.hpp
@@ -105,6 +108,8 @@ target_link_libraries(
   ctl::core
   ctl::object
   ${llvm_libs}
+  MLIRCallInterfaces
+  MLIRCastInterfaces
   MLIRIR
   MLIRParser
   MLIRPass
@@ -113,8 +118,9 @@ target_link_libraries(
 )
 add_dependencies(
   toy_mlir_library
-  toy_ops_inc_gen
+  toy_shape_interface_interface_inc_gen
   toy_simplify_inc_gen
+  toy_ops_inc_gen
 )
 
 add_subdirectory(tools)

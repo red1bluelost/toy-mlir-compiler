@@ -4,11 +4,79 @@
 
 #include <mlir/IR/FunctionImplementation.h>
 #include <mlir/IR/OpImplementation.h>
+#include <mlir/Transforms/InliningUtils.h>
 
 #include <range/v3/view/enumerate.hpp>
 #include <range/v3/view/zip.hpp>
 
 #include <ranges>
+
+//===----------------------------------------------------------------------===//
+// ToyInlinerInterface
+//===----------------------------------------------------------------------===//
+
+/// This class defines the interface for handling inlining with Toy
+/// operations.
+namespace {
+struct ToyInlinerInterface final : public mlir::DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// All call operations within toy can be inlined.
+  bool isLegalToInline(
+      mlir::Operation* call, mlir::Operation* callable, bool wouldBeCloned
+  ) const final {
+    return true;
+  }
+
+  /// All operations within toy can be inlined.
+  bool isLegalToInline(mlir::Operation*, mlir::Region*, bool, mlir::IRMapping&)
+      const final {
+    return true;
+  }
+
+  // All functions within toy can be inlined.
+  bool isLegalToInline(mlir::Region*, mlir::Region*, bool, mlir::IRMapping&)
+      const final {
+    return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// Handle the given inlined terminator(toy.return) by replacing it with a new
+  /// operation as necessary.
+  void handleTerminator(
+      mlir::Operation* op, mlir::ArrayRef<mlir::Value> valuesToRepl
+  ) const final {
+    // Only "toy.return" needs to be handled here.
+    auto returnOp = cast<mlir::toy::ReturnOp>(op);
+
+    // Replace the values directly with the return operands.
+    assert(returnOp.getNumOperands() == valuesToRepl.size());
+    for (const auto& [idx, val] : llvm::enumerate(returnOp.getOperands()))
+      valuesToRepl[idx].replaceAllUsesWith(val);
+  }
+
+  /// Attempts to materialize a conversion for a type mismatch between a call
+  /// from this dialect, and a callable region. This method should generate an
+  /// operation that takes 'input' as the only operand, and produces a single
+  /// result of 'resultType'. If a conversion can not be generated, nullptr
+  /// should be returned.
+  mlir::Operation* materializeCallConversion(
+      mlir::OpBuilder& builder,
+      mlir::Value      input,
+      mlir::Type       resultType,
+      mlir::Location   conversionLoc
+  ) const final {
+    return builder.create<mlir::toy::CastOp>(conversionLoc, resultType, input);
+  }
+};
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // ToyDialect
@@ -23,6 +91,7 @@ void mlir::toy::ToyDialect::initialize() {
 #define GET_OP_LIST
 #include "toy/dialect/ops.cpp.inc"
       >();
+  addInterfaces<ToyInlinerInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -118,7 +187,9 @@ mlir::toy::ConstantOp::parse(OpAsmParser& parser, OperationState& result) {
 /// strings, attributes, operands, types, etc.
 void mlir::toy::ConstantOp::print(OpAsmPrinter& printer) {
   printer << " ";
-  printer.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"value"});
+  printer.printOptionalAttrDict(
+      getOperation()->getAttrs(), /*elidedAttrs=*/{"value"}
+  );
   printer << getValue();
 }
 
@@ -173,6 +244,10 @@ mlir::toy::AddOp::parse(OpAsmParser& parser, OperationState& result) {
 
 void mlir::toy::AddOp::print(OpAsmPrinter& p) { print_binary_op(p, *this); }
 
+void mlir::toy::AddOp::inferShapes() {
+  getResult().setType(getLhs().getType());
+}
+
 //===----------------------------------------------------------------------===//
 // MulOp
 //===----------------------------------------------------------------------===//
@@ -191,6 +266,10 @@ mlir::toy::MulOp::parse(OpAsmParser& parser, OperationState& result) {
 
 void mlir::toy::MulOp::print(OpAsmPrinter& p) { print_binary_op(p, *this); }
 
+void mlir::toy::MulOp::inferShapes() {
+  getResult().setType(getLhs().getType());
+}
+
 //===----------------------------------------------------------------------===//
 // GenericCallOp
 //===----------------------------------------------------------------------===//
@@ -207,6 +286,18 @@ void mlir::toy::GenericCallOp::build(
   state.addAttribute(
       "callee", SymbolRefAttr::get(builder.getContext(), callee)
   );
+}
+
+/// Return the callee of the generic call operation, this is required by the
+/// call interface.
+mlir::CallInterfaceCallable mlir::toy::GenericCallOp::getCallableForCallee() {
+  return getOperation()->getAttrOfType<SymbolRefAttr>("callee");
+}
+
+/// Get the argument operands to the called function, this is required by the
+/// call interface.
+mlir::Operation::operand_range mlir::toy::GenericCallOp::getArgOperands() {
+  return getInputs();
 }
 
 //===----------------------------------------------------------------------===//
@@ -233,6 +324,35 @@ mlir::LogicalResult mlir::toy::TransposeOp::verify() {
   return emitError() << "expected result shape to be a transpose of the input";
 }
 
+void mlir::toy::TransposeOp::inferShapes() {
+  auto type = cast<RankedTensorType>(getOperand().getType());
+  SmallVector<::toy::i64, 2> dims(llvm::reverse(type.getShape()));
+  getResult().setType(RankedTensorType::get(dims, type.getElementType()));
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+/// Infer the output shape of the CastOp, this is required by the shape
+/// inference interface.
+void mlir::toy::CastOp::inferShapes() {
+  getResult().setType(getInput().getType());
+}
+
+/// Returns true if the given set of input and result types are compatible with
+/// this cast operation.
+bool mlir::toy::CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
+  if (inputs.size() != 1 || outputs.size() != 1) return false;
+  // The inputs must be Tensors with the same element type.
+  TensorType input  = dyn_cast<TensorType>(inputs.front());
+  TensorType output = dyn_cast<TensorType>(outputs.front());
+  if (!input || !output || input.getElementType() != output.getElementType())
+    return false;
+  // The shape is required to match if both types are ranked.
+  return !input.hasRank() || !output.hasRank() || input == output;
+}
+
 //===----------------------------------------------------------------------===//
 // ReturnOp
 //===----------------------------------------------------------------------===//
@@ -240,7 +360,7 @@ mlir::LogicalResult mlir::toy::TransposeOp::verify() {
 mlir::LogicalResult mlir::toy::ReturnOp::verify() {
   // We know that the parent operation is a function, because of the 'HasParent'
   // trait attached to the operation definition.
-  auto function = cast<FuncOp>((*this)->getParentOp());
+  auto function = cast<FuncOp>(getOperation()->getParentOp());
 
   /// ReturnOps can only have a single optional operand.
   if (getNumOperands() > 1)
@@ -319,6 +439,27 @@ void mlir::toy::FuncOp::print(OpAsmPrinter& p) {
       getArgAttrsAttrName(),
       getResAttrsAttrName()
   );
+}
+
+/// Returns the region on the function operation that is callable.
+mlir::Region* mlir::toy::FuncOp::getCallableRegion() { return &getBody(); }
+
+/// Returns the results types that the callable region produces when
+/// executed.
+llvm::ArrayRef<mlir::Type> mlir::toy::FuncOp::getCallableResults() {
+  return getFunctionType().getResults();
+}
+
+/// Returns the argument attributes for all callable region arguments or
+/// null if there are none.
+mlir::ArrayAttr mlir::toy::FuncOp::getCallableArgAttrs() {
+  return getArgAttrs().value_or(nullptr);
+}
+
+/// Returns the result attributes for all callable region results or
+/// null if there are none.
+mlir::ArrayAttr mlir::toy::FuncOp::getCallableResAttrs() {
+  return getResAttrs().value_or(nullptr);
 }
 
 //===----------------------------------------------------------------------===//

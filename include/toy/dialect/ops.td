@@ -1,7 +1,11 @@
 #ifndef TOY_DIALECT_OPS_TD
 #define TOY_DIALECT_OPS_TD
 
+include "toy/dialect/shape_inference_interface.td"
+
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/CastInterfaces.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpBase.td"
 
@@ -62,7 +66,9 @@ def ConstantOp : Toy_Op<"constant", [Pure]> {
 // AddOp
 //===----------------------------------------------------------------------===//
 
-def AddOp : Toy_Op<"add", [Pure]> {
+def AddOp : Toy_Op<"add", [
+  Pure, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>
+]> {
   let summary = "element-wise addition operation";
   let description = [{
     The "add" operation performs element-wise addition between two tensors.
@@ -83,7 +89,9 @@ def AddOp : Toy_Op<"add", [Pure]> {
 // MulOp
 //===----------------------------------------------------------------------===//
 
-def MulOp : Toy_Op<"mul", [Pure]> {
+def MulOp : Toy_Op<"mul", [
+  Pure, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>
+]> {
   let summary = "element-wise multiplication operation";
   let description = [{
     The "mul" operation performs element-wise multiplication between two
@@ -104,7 +112,11 @@ def MulOp : Toy_Op<"mul", [Pure]> {
 // FuncOp
 //===----------------------------------------------------------------------===//
 
-def FuncOp : Toy_Op<"func", [FunctionOpInterface, IsolatedFromAbove]> {
+def FuncOp : Toy_Op<"func", [
+  DeclareOpInterfaceMethods<CallableOpInterface>,
+  FunctionOpInterface,
+  IsolatedFromAbove,
+]> {
   let summary = "user defined function operation";
   let description = [{
     The "toy.func" operation represents a user defined function. These are
@@ -158,7 +170,9 @@ def FuncOp : Toy_Op<"func", [FunctionOpInterface, IsolatedFromAbove]> {
 // GenericCallOp
 //===----------------------------------------------------------------------===//
 
-def GenericCallOp : Toy_Op<"generic_call"> {
+def GenericCallOp : Toy_Op<"generic_call", [
+  DeclareOpInterfaceMethods<CallOpInterface>
+]> {
   let summary = "generic call operation";
   let description = [{
     Generic calls represent calls to a user defined function that needs to
@@ -229,6 +243,31 @@ def ReshapeOp : Toy_Op<"reshape", [Pure]> {
 }
 
 //===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+def CastOp : Toy_Op<"cast", [
+     DeclareOpInterfaceMethods<CastOpInterface>,
+     DeclareOpInterfaceMethods<ShapeInferenceOpInterface>,
+     Pure,
+     SameOperandsAndResultShape
+]> {
+  let summary = "shape cast operation";
+  let description = [{
+    The "cast" operation converts a tensor from one type to an equivalent type
+    without changing any data elements. The source and destination types must
+    both be tensor types with the same element type. If both are ranked, then
+    shape is required to match. The operation is invalid if converting to a
+    mismatching constant dimension.
+  }];
+
+  let arguments = (ins F64Tensor:$input);
+  let results = (outs F64Tensor:$output);
+
+  let assemblyFormat = "$input attr-dict `:` type($input) `to` type($output)";
+}
+
+//===----------------------------------------------------------------------===//
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
@@ -271,7 +310,9 @@ def ReturnOp : Toy_Op<"return", [Pure, HasParent<"FuncOp">, Terminator]> {
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
-def TransposeOp : Toy_Op<"transpose", [Pure]> {
+def TransposeOp : Toy_Op<"transpose", [
+  Pure, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>
+]> {
   let summary = "transpose operation";
 
   let arguments = (ins F64Tensor:$input);
