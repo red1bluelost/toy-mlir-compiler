@@ -11,6 +11,8 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/Path.h>
 #include <llvm/Support/SourceMgr.h>
+#include <mlir/Dialect/Affine/Passes.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/OwningOpRef.h>
@@ -51,7 +53,7 @@ cl::opt<InputType> input_type(
     )
 );
 
-enum class Action { None, DumpTokens, DumpAST, DumpMLIR };
+enum class Action { None, DumpTokens, DumpAST, DumpMLIR, DumpMLIRAffine };
 
 cl::opt<enum Action> action(
     "emit",
@@ -59,7 +61,12 @@ cl::opt<enum Action> action(
     cl::values(
         clEnumValN(Action::DumpTokens, "tokens", "output the token dump"),
         clEnumValN(Action::DumpAST, "ast", "output the AST dump"),
-        clEnumValN(Action::DumpMLIR, "mlir", "output the MLIR dump")
+        clEnumValN(Action::DumpMLIR, "mlir", "output the MLIR dump"),
+        clEnumValN(
+            Action::DumpMLIRAffine,
+            "mlir-affine",
+            "output the MLIR dump after affine lowering"
+        )
     )
 );
 
@@ -110,10 +117,12 @@ int main_dump_mlir(std::unique_ptr<llvm::MemoryBuffer> file) {
   }
   if (!mod) return EXIT_FAILURE;
 
-  if (enable_opt) {
-    mlir::PassManager pm{mod.get()->getName()};
-    if (failed(mlir::applyPassManagerCLOptions(pm))) return EXIT_FAILURE;
+  mlir::PassManager pm{mod.get()->getName()};
+  if (failed(mlir::applyPassManagerCLOptions(pm))) return EXIT_FAILURE;
 
+  bool is_lowering_to_affine = action >= Action::DumpMLIRAffine;
+
+  if (enable_opt || is_lowering_to_affine) {
     // Inline all functions into main and then delete them.
     pm.addPass(mlir::createInlinerPass());
 
@@ -121,8 +130,25 @@ int main_dump_mlir(std::unique_ptr<llvm::MemoryBuffer> file) {
     op_pm.addPass(mlir::toy::createShapeInferencePass());
     op_pm.addPass(mlir::createCanonicalizerPass());
     op_pm.addPass(mlir::createCSEPass());
-    if (failed(pm.run(*mod))) return EXIT_FAILURE;
   }
+
+  if (is_lowering_to_affine) {
+    // Partially lower the toy dialect.
+    pm.addPass(mlir::toy::createLowerToAffinePass());
+
+    // Add a few cleanups post lowering.
+    mlir::OpPassManager& opt_pm = pm.nest<mlir::func::FuncOp>();
+    opt_pm.addPass(mlir::createCanonicalizerPass());
+    opt_pm.addPass(mlir::createCSEPass());
+
+    // Add optimizations if enabled.
+    if (enable_opt) {
+      opt_pm.addPass(mlir::affine::createLoopFusionPass());
+      opt_pm.addPass(mlir::affine::createAffineScalarReplacementPass());
+    }
+  }
+
+  if (failed(pm.run(*mod))) return EXIT_FAILURE;
 
   mod->dump();
   return EXIT_SUCCESS;
@@ -188,7 +214,8 @@ int main(const int argc, const char* argv[]) {
   switch (action) {
   case Action::DumpTokens: return main_dump_tokens(std::move(file));
   case Action::DumpAST: return main_dump_ast(std::move(file));
-  case Action::DumpMLIR: return main_dump_mlir(std::move(file));
+  case Action::DumpMLIR:
+  case Action::DumpMLIRAffine: return main_dump_mlir(std::move(file));
   case Action::None: {
     fmt::println("No action specified (parsing only?), use -emit=<action>");
     return EXIT_SUCCESS;

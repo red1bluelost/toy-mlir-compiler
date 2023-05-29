@@ -65,6 +65,7 @@ endif ()
 set(TOY_MLIR_SOURCES
   lib/ast/ast.cpp
   lib/dialect/dialect.cpp
+  lib/dialect/lower_to_affine_loops_pass.cpp
   lib/dialect/mlir_gen.cpp
   lib/dialect/shape_interface_pass.cpp
   lib/lexer/lexer.cpp
@@ -89,6 +90,8 @@ include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS})
 add_subdirectory(include/toy/dialect)
 add_subdirectory(lib/transforms)
 
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+
 add_library(
   toy_mlir_library
   ${TOY_MLIR_SOURCES}
@@ -108,6 +111,7 @@ target_link_libraries(
   ctl::core
   ctl::object
   ${llvm_libs}
+  ${dialect_libs}
   MLIRCallInterfaces
   MLIRCastInterfaces
   MLIRIR

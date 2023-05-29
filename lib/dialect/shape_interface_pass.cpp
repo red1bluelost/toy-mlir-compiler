@@ -5,7 +5,7 @@
 #include <llvm/Support/Debug.h>
 #include <mlir/Pass/Pass.h>
 
-#define DEBUG_TYPE "shape-inference"
+#define DEBUG_TYPE "toy-shape-inference"
 
 namespace mlir::toy {
 /// Include the auto-generated definitions for the shape inference interfaces.
@@ -36,7 +36,7 @@ struct ShapeInferencePass final
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ShapeInferencePass)
 
   void runOnOperation() final {
-    auto f = getOperation();
+    mlir::toy::FuncOp f = getOperation();
 
     // Populate the worklist with the operations that need shape inference:
     // these are operations that return a dynamic shape.
