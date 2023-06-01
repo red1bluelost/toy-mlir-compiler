@@ -10,7 +10,7 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS})
-llvm_map_components_to_libnames(llvm_libs support)
+llvm_map_components_to_libnames(llvm_libs core nativecodegen orcjit support)
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
@@ -66,6 +66,7 @@ set(TOY_MLIR_SOURCES
   lib/ast/ast.cpp
   lib/dialect/dialect.cpp
   lib/dialect/lower_to_affine_loops_pass.cpp
+  lib/dialect/lower_to_llvm_pass.cpp
   lib/dialect/mlir_gen.cpp
   lib/dialect/shape_interface_pass.cpp
   lib/lexer/lexer.cpp
@@ -114,6 +115,7 @@ target_link_libraries(
   ${dialect_libs}
   MLIRCallInterfaces
   MLIRCastInterfaces
+  MLIRExecutionEngine
   MLIRIR
   MLIRParser
   MLIRPass
