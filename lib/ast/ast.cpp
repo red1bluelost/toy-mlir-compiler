@@ -1,6 +1,7 @@
 #include "toy/ast/ast.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <llvm/Support/ErrorHandling.h>
 
 #include <ctl/object/numerics.hpp>
 #include <fmt/ranges.h>
@@ -39,12 +40,14 @@ class ASTDumper {
   void dump(std::span<const std::unique_ptr<ExprAST>> expr_list);
   void dump(const NumberExprAST& num);
   void dump(const LiteralExprAST& node);
+  void dump(const StructLitExprAST& node);
   void dump(const VariableExprAST& node);
   void dump(const ReturnExprAST& node);
   void dump(const BinaryExprAST& node);
   void dump(const CallExprAST& node);
   void dump(const PrintExprAST& node);
   void dump(const PrototypeAST& node);
+  void dump(const StructAST& node);
   void dump(const FunctionAST& node);
 
   /// Actually print spaces matching the current indentation level
@@ -68,6 +71,7 @@ void ASTDumper::dump(const ExprAST& expr) {
           BinaryExprAST,
           CallExprAST,
           LiteralExprAST,
+          StructLitExprAST,
           NumberExprAST,
           PrintExprAST,
           ReturnExprAST,
@@ -140,6 +144,18 @@ void ASTDumper::dump(const LiteralExprAST& node) {
   fmt::println(" {}", node.location());
 }
 
+/// Print a struct literal, see the recursive helper above for the
+/// implementation.
+void ASTDumper::dump(const StructLitExprAST& node) {
+  auto i_ = indent();
+  fmt::println("Struct Literal: {} {{", node.location());
+
+  for (auto& field : node.values()) dump(*field);
+
+  reindent();
+  fmt::println("}}");
+}
+
 /// Print a variable reference (just a name).
 void ASTDumper::dump(const VariableExprAST& node) {
   auto i_ = indent();
@@ -188,7 +204,14 @@ void ASTDumper::dump(const PrintExprAST& node) {
 
 /// Print type: only the shape is printed in between '<' and '>'
 void ASTDumper::dump(const VarType& type) const {
-  fmt::print("<{}>", fmt::join(type.shape, ", "));
+  struct Visitor {
+    void operator()(std::monostate) { fmt::print("<>"); }
+    void operator()(std::string_view name) { fmt::print("<{}>", name); }
+    void operator()(std::span<const i64> shape) {
+      fmt::print("<{}>", fmt::join(shape, ", "));
+    }
+  };
+  std::visit(Visitor{}, type.internal);
 }
 
 /// Print a function prototype, first the function name, and then the list of
@@ -197,15 +220,36 @@ void ASTDumper::dump(const PrototypeAST& node) {
   auto i_ = indent();
   fmt::println("Proto '{}' {}", node.name(), node.location());
   reindent();
-  fmt::println(
-      "Params: [{}]",
-      fmt::join(
-          node.args() | std::views::transform([](const auto& arg) {
-            return arg->name();
-          }),
-          ", "
-      )
-  );
+
+  auto names =
+      node.args()
+      | std::views::transform([](const VarDeclExprAST& arg) -> std::string {
+          const VarType& type = arg.type();
+          if (type.is_empty()) return std::string(arg.name());
+          if (type.is_name())
+            return fmt::format("{}: {}", arg.name(), type.name());
+          llvm_unreachable("Unexpected type in prototype args");
+        });
+  fmt::println("Params: [{}]", fmt::join(names, ", "));
+}
+
+/// Print a struct and all its fields.
+void ASTDumper::dump(const StructAST& node) {
+  auto i_ = indent();
+  fmt::println("Struct '{}' {}", node.name(), node.location());
+
+  for (auto field :
+       node.variables(
+       ) | std::views::transform([](const VarDeclExprAST& arg) -> std::string {
+         const VarType& type = arg.type();
+         if (type.is_empty()) return std::string(arg.name());
+         if (type.is_name())
+           return fmt::format("{}: {}", arg.name(), type.name());
+         llvm_unreachable("Unexpected type in prototype args");
+       })) {
+    auto i2_ = indent();
+    fmt::println("- {}", field);
+  }
 }
 
 /// Print a function, first the prototype and then the body.
@@ -219,6 +263,7 @@ void ASTDumper::dump(const FunctionAST& node) {
 /// Print a module, actually loop over the functions and print them in sequence.
 void ASTDumper::dump(const ModuleAST& node) {
   fmt::println("Module:");
+  for (const auto& s : node.structs()) dump(s);
   for (const auto& f : node.functions()) dump(f);
 }
 

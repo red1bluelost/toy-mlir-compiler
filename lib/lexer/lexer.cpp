@@ -5,6 +5,7 @@
 #include <ctl/object/numerics.hpp>
 #include <fmt/core.h>
 
+#include <charconv>
 #include <utility>
 
 using namespace toy;
@@ -42,18 +43,31 @@ Token Lexer::process_token() {
         .Case("return", Token::Return)
         .Case("fn", Token::Fn)
         .Case("let", Token::Let)
+        .Case("struct", Token::Struct)
         .Default(Token::Identifier);
   }
 
-  // Number: [0-9.]+
+  // Number Or Dot: [0-9.]+
   if (std::isdigit(last_char_) || last_char_ == '.') {
     std::string num_str;
+
+    if (last_char_ == '.') {
+      if (std::isdigit(last_char_ = process_next_char())) num_str += '.';
+      else return Token::Dot;
+    }
+    
     do {
       num_str += ctl::lossless_cast<char>(last_char_);
       last_char_ = process_next_char();
-    } while (isdigit(last_char_) || last_char_ == '.');
+    } while (std::isdigit(last_char_) || last_char_ == '.');
 
-    value_ = std::strtod(num_str.c_str(), nullptr);
+    if (auto res = std::from_chars(
+            num_str.data(), num_str.data() + num_str.size(), value_
+        );
+        res.ec != std::errc{}) {
+      fmt::println(stderr, "Tokenize number failed from '{}'", num_str);
+      std::exit(EXIT_FAILURE);
+    }
     return Token::Number;
   }
 
@@ -79,6 +93,7 @@ void toy::dump_tokens(Lexer lexer) {
     case Token::Return: fmt::print("Token(return)"); break;
     case Token::Let: fmt::print("Token(let)"); break;
     case Token::Fn: fmt::print("Token(fn)"); break;
+    case Token::Struct: fmt::print("Token(struct)"); break;
     case Token::Identifier:
       fmt::print("Token(id = \"{}\")", lexer.identifier());
       break;

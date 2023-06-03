@@ -5,6 +5,7 @@
 #include "toy/util/line_reader.hpp"
 
 #include <cassert>
+#include <optional>
 
 namespace toy {
 
@@ -22,6 +23,7 @@ enum class Token : i32 {
   AngleBracketOpen  = '<',
   AngleBracketClose = '>',
   Assignment        = '=',
+  Dot               = '.',
 
   EndOfFile = -1,
 
@@ -29,10 +31,11 @@ enum class Token : i32 {
   Return = -2,
   Let    = -3,
   Fn     = -4,
+  Struct = -5,
 
   /// Primary
-  Identifier = -5,
-  Number     = -6,
+  Identifier = -6,
+  Number     = -7,
 };
 
 /// The Lexer is an abstract base class providing all the facilities that the
@@ -65,6 +68,21 @@ class Lexer {
   void consume(Token tok) {
     assert(tok == current_token_ && "consume Token mismatch expectation");
     next_token();
+  }
+
+  /// Move to the next token in the stream if token is current, otherwise return
+  /// false without advancing.
+  bool consume_if(Token tok) {
+    return tok == current_token_ && (next_token(), true);
+  }
+
+  /// Move to next token and return the string if current is an identifier,
+  /// otherwise return std::nullopt
+  std::optional<std::string> consume_identifier() {
+    if (Token::Identifier != current_token_) return std::nullopt;
+    std::string ret_str = take_identifier();
+    next_token();
+    return ret_str;
   }
 
   /// Return the current identifier (prereq: current_token_ == Identifier)

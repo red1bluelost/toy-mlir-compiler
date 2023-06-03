@@ -3,6 +3,7 @@
 #include "toy/ast/ast.hpp"
 
 #include <llvm/Support/Casting.h>
+#include <llvm/Support/ErrorHandling.h>
 
 #include <ctl/object/numerics.hpp>
 
@@ -52,24 +53,21 @@ std::unique_ptr<ExprAST> Parser::parse_tensor_literal_expr() {
       else return nullptr; // parse error in the nested array.
     } else {
       if (lexer.current_token() != Token::Number)
-        return parse_error<ExprAST>("<num> or [", "in literal expression");
+        return parse_error("<num> or [", "in literal expression");
       if (auto number = parse_number_expr())
         values.push_back(std::move(number));
       else return nullptr; // parse error in the nested array.
     }
 
     // End of this list on ']'
-    if (lexer.current_token() == Token::SqrBracketClose) break;
+    if (lexer.consume_if(Token::SqrBracketClose)) break;
 
     // Elements are separated by a comma.
-    if (lexer.current_token() != Token::Comma)
-      return parse_error<ExprAST>("] or ,", "in literal expression");
-
-    lexer.consume(Token::Comma);
+    if (!lexer.consume_if(Token::Comma))
+      return parse_error("] or ,", "in literal expression");
   }
   if (values.empty())
-    return parse_error<ExprAST>("<something>", "to fill literal expression");
-  lexer.consume(Token::SqrBracketClose);
+    return parse_error("<something>", "to fill literal expression");
 
   // Fill in the dimensions now. First the current nesting level:
   dims.push_back(ctl::lossless_cast<i64>(values.size()));
@@ -79,7 +77,7 @@ std::unique_ptr<ExprAST> Parser::parse_tensor_literal_expr() {
   if (contains_literals) {
     auto* first_literal = llvm::dyn_cast<LiteralExprAST>(values.front().get());
     if (!first_literal)
-      return parse_error<ExprAST>(
+      return parse_error(
           "uniform well-nested dimensions", "inside literal expression"
       );
 
@@ -97,7 +95,7 @@ std::unique_ptr<ExprAST> Parser::parse_tensor_literal_expr() {
               return llvm::dyn_cast<LiteralExprAST>(expr.get());
             }
         ))
-      return parse_error<ExprAST>(
+      return parse_error(
           "uniform well-nested dimensions", "inside literal expression"
       );
   }
@@ -107,14 +105,47 @@ std::unique_ptr<ExprAST> Parser::parse_tensor_literal_expr() {
   );
 }
 
+std::unique_ptr<ExprAST> Parser::parse_struct_literal_expr() {
+  Location loc = lexer.last_location();
+  lexer.consume(Token::CurlyBracketOpen);
+
+  if (lexer.consume_if(Token::CurlyBracketClose))
+    return parse_error("<something>", "to fill struct literal");
+
+  std::vector<std::unique_ptr<ExprAST>> args;
+  while (true) {
+    switch (lexer.current_token()) {
+    case Token::SqrBracketOpen:
+      if (auto e = parse_tensor_literal_expr()) args.push_back(std::move(e));
+      else return nullptr;
+      break;
+    case Token::Number:
+      if (auto e = parse_number_expr()) args.push_back(std::move(e));
+      else return nullptr;
+      break;
+    case Token::CurlyBracketOpen:
+      if (auto e = parse_struct_literal_expr()) args.push_back(std::move(e));
+      else return nullptr;
+      break;
+    default: return parse_error("{, [, or number", "in struct literal");
+    }
+
+    if (!lexer.consume_if(Token::Comma)) break;
+    if (lexer.current_token() == Token::CurlyBracketClose) break;
+  }
+  if (!lexer.consume_if(Token::CurlyBracketClose))
+    return parse_error('}', "at end of struct literal");
+
+  return std::make_unique<StructLitExprAST>(loc, std::move(args));
+}
+
 std::unique_ptr<ExprAST> Parser::parse_paren_expr() {
   lexer.consume(Token::ParenOpen);
   auto expr = parse_expression();
   if (!expr) return nullptr;
 
-  if (lexer.current_token() != Token::ParenClose)
-    return parse_error<ExprAST>(")", "to close expression with parentheses");
-  lexer.consume(Token::ParenClose);
+  if (!lexer.consume_if(Token::ParenClose))
+    return parse_error(")", "to close expression with parentheses");
   return expr;
 }
 
@@ -123,30 +154,25 @@ std::unique_ptr<ExprAST> Parser::parse_identifier_expr() {
   Location    loc  = lexer.last_location();
   lexer.consume(Token::Identifier);
 
-  if (lexer.current_token() != Token::ParenOpen) // Simple variable ref.
+  if (!lexer.consume_if(Token::ParenOpen)) // Simple variable ref.
     return std::make_unique<VariableExprAST>(loc, std::move(name));
 
   // This is a function call.
-  lexer.consume(Token::ParenOpen);
   std::vector<std::unique_ptr<ExprAST>> args;
-  if (lexer.current_token() != Token::ParenClose) {
-    while (true) {
-      if (auto arg = parse_expression()) args.push_back(std::move(arg));
-      else return nullptr;
+  while (lexer.current_token() != Token::ParenClose) {
+    if (auto arg = parse_expression()) args.push_back(std::move(arg));
+    else return nullptr;
 
-      if (lexer.current_token() == Token::ParenClose) break;
+    if (lexer.consume_if(Token::ParenClose)) break;
 
-      if (lexer.current_token() != Token::Comma)
-        return parse_error<ExprAST>(", or )", "in argument list");
-      lexer.consume(Token::Comma);
-    }
+    if (!lexer.consume_if(Token::Comma))
+      return parse_error(", or )", "in argument list");
   }
-  lexer.consume(Token::ParenClose);
 
   // It can be a builtin call to print
   if (name == "print") {
     if (args.size() != 1)
-      return parse_error<ExprAST>("<single arg>", "as argument to print()");
+      return parse_error("<single arg>", "as argument to print()");
 
     return std::make_unique<PrintExprAST>(loc, std::move(args[0]));
   }
@@ -159,7 +185,7 @@ std::unique_ptr<ExprAST> Parser::parse_primary() {
   switch (lexer.current_token()) {
   default:
     fmt::println(
-        "unknown token '{}' when expecting an expression",
+        "unexpected token '{}' when expecting an expression",
         std::to_underlying(lexer.current_token())
     );
     return nullptr;
@@ -167,8 +193,7 @@ std::unique_ptr<ExprAST> Parser::parse_primary() {
   case Token::Number: return parse_number_expr();
   case Token::ParenOpen: return parse_paren_expr();
   case Token::SqrBracketOpen: return parse_tensor_literal_expr();
-  case Token::Semicolon:
-  case Token::CurlyBracketClose: return nullptr;
+  case Token::CurlyBracketOpen: return parse_struct_literal_expr();
   }
 }
 
@@ -189,8 +214,7 @@ Parser::parse_bin_op_rhs(int expr_prec, std::unique_ptr<ExprAST> lhs) {
 
     // Parse the primary expression after the binary operator.
     auto rhs = parse_primary();
-    if (!rhs)
-      return parse_error<ExprAST>("expression", "to complete binary operator");
+    if (!rhs) return parse_error("expression", "to complete binary operator");
 
     // If BinOp binds less tightly with rhs than the operator after rhs, let
     // the pending operator take rhs as its lhs.
@@ -216,41 +240,44 @@ std::unique_ptr<ExprAST> Parser::parse_expression() {
 }
 
 std::optional<VarType> Parser::parse_type() {
-  if (lexer.current_token() != Token::AngleBracketOpen)
-    return parse_error_opt<VarType>("<", "to begin type");
-  lexer.consume(Token::AngleBracketOpen);
+  switch (lexer.current_token()) {
+  default: return parse_error_opt("<", "to begin type");
+  case Token::AngleBracketOpen: {
+    lexer.consume(Token::AngleBracketOpen);
 
-  VarType type;
-  while (lexer.current_token() == Token::Number) {
-    type.shape.push_back(ctl::lossless_cast<i64>(lexer.value()));
-    lexer.consume(Token::Number);
-    if (lexer.current_token() == Token::Comma) lexer.consume(Token::Comma);
+    VarType type{VarType::ShapeVec{}};
+    while (lexer.current_token() == Token::Number) {
+      std::get<VarType::ShapeVec>(type.internal)
+          .push_back(ctl::lossless_cast<i64>(lexer.value()));
+      lexer.consume(Token::Number);
+      lexer.consume_if(Token::Comma);
+    }
+
+    if (!lexer.consume_if(Token::AngleBracketClose))
+      return parse_error_opt(">", "to end type");
+    return type;
   }
-
-  if (lexer.current_token() != Token::AngleBracketClose)
-    return parse_error_opt<VarType>(">", "to end type");
-  lexer.consume(Token::AngleBracketClose);
-  return type;
+  case Token::Identifier: {
+    VarType type{lexer.take_identifier()};
+    lexer.consume(Token::Identifier);
+    return type;
+  }
+  }
 }
 
 std::unique_ptr<VarDeclExprAST> Parser::parse_declaration() {
-  if (lexer.current_token() != Token::Let)
-    return parse_error<VarDeclExprAST>("let", "to begin declaration");
   Location loc = lexer.last_location();
-  lexer.consume(Token::Let);
+  if (!lexer.consume_if(Token::Let))
+    return parse_error("let", "to begin declaration");
 
-  if (lexer.current_token() != Token::Identifier)
-    return parse_error<VarDeclExprAST>("identifier", "after 'var' declaration");
-
-  std::string id = lexer.take_identifier();
-  lexer.consume(Token::Identifier);
+  std::string id;
+  if (auto str_opt = lexer.consume_identifier()) id = *std::move(str_opt);
+  else return parse_error("identifier", "after 'let' declaration");
 
   VarType type; // Type is optional, it can be inferred
-  if (lexer.current_token() == Token::Colon) {
-    lexer.consume(Token::Colon);
-    auto type_opt = parse_type();
-    if (!type_opt) return nullptr;
-    type = *type_opt;
+  if (lexer.consume_if(Token::Colon)) {
+    if (auto type_opt = parse_type()) type = *std::move(type_opt);
+    else return nullptr;
   }
 
   lexer.consume(Token::Assignment);
@@ -262,16 +289,13 @@ std::unique_ptr<VarDeclExprAST> Parser::parse_declaration() {
 }
 
 std::optional<ExprASTList> Parser::parse_block() {
-  if (lexer.current_token() != Token::CurlyBracketOpen)
-    return parse_error_opt<ExprASTList>("{", "to begin block");
-  lexer.consume(Token::CurlyBracketOpen);
-
-  ExprASTList expr_list;
+  if (!lexer.consume_if(Token::CurlyBracketOpen))
+    return parse_error_opt("{", "to begin block");
 
   // Ignore empty expressions: swallow sequences of semicolons.
-  while (lexer.current_token() == Token::Semicolon)
-    lexer.consume(Token::Semicolon);
+  while (lexer.consume_if(Token::Semicolon)) lexer.consume(Token::Semicolon);
 
+  ExprASTList expr_list;
   while (lexer.current_token() != Token::CurlyBracketClose
          && lexer.current_token() != Token::EndOfFile) {
     switch (lexer.current_token()) {
@@ -299,81 +323,74 @@ std::optional<ExprASTList> Parser::parse_block() {
     }
 
     // Ensure that elements are separated by a semicolon.
-    if (lexer.current_token() != Token::Semicolon)
-      return parse_error_opt<ExprASTList>(";", "after expression");
+    if (!lexer.consume_if(Token::Semicolon))
+      return parse_error_opt(";", "after expression");
 
     // Ignore empty expressions: swallow sequences of semicolons.
-    while (lexer.current_token() == Token::Semicolon)
-      lexer.consume(Token::Semicolon);
+    while (lexer.consume_if(Token::Semicolon)) continue;
   }
 
-  if (lexer.current_token() != Token::CurlyBracketClose)
-    return parse_error_opt<ExprASTList>("}", "to close block");
+  if (!lexer.consume_if(Token::CurlyBracketClose))
+    return parse_error_opt("}", "to close block");
 
-  lexer.consume(Token::CurlyBracketClose);
   return expr_list;
+}
+
+std::optional<std::vector<VarDeclExprAST>>
+Parser::parse_field_list(Token separator, bool requires_last) {
+  std::vector<VarDeclExprAST> args;
+
+  bool inside_identifier = false;
+  while (lexer.current_token() == Token::Identifier) {
+    inside_identifier = true;
+
+    std::string name    = lexer.take_identifier();
+    Location    arg_loc = lexer.last_location();
+    lexer.consume(Token::Identifier);
+
+    VarType var_type = {};
+    if (lexer.consume_if(Token::Colon)) {
+      if (auto vto = parse_type()) var_type = *std::move(vto);
+      else return std::nullopt;
+      if (!var_type.is_name())
+        return parse_error_opt("struct name", "in parameters list");
+    }
+
+    args.emplace_back(arg_loc, name, var_type);
+    if (!lexer.consume_if(separator)) break;
+
+    inside_identifier = false;
+  }
+  if (requires_last && inside_identifier)
+    return parse_error_opt("separator", "at end of parameters list");
+
+  return args;
 }
 
 std::unique_ptr<PrototypeAST> Parser::parse_prototype() {
   Location proto_loc = lexer.last_location();
+  if (!lexer.consume_if(Token::Fn)) return parse_error("fn", "in prototype");
 
-  if (lexer.current_token() != Token::Fn)
-    return parse_error<PrototypeAST>("fn", "in prototype");
-  lexer.consume(Token::Fn);
+  std::string fn_name;
+  if (auto str_opt = lexer.consume_identifier()) fn_name = *std::move(str_opt);
+  else return parse_error("function name", "in prototype");
 
-  if (lexer.current_token() != Token::Identifier)
-    return parse_error<PrototypeAST>("function name", "in prototype");
+  if (!lexer.consume_if(Token::ParenOpen))
+    return parse_error("(", "in prototype");
 
-  std::string fn_name = lexer.take_identifier();
-  lexer.consume(Token::Identifier);
+  std::vector<VarDeclExprAST> args;
+  if (auto args_opt = parse_field_list(Token::Comma, false))
+    args = *std::move(args_opt);
+  else return nullptr;
+  if (!lexer.consume_if(Token::ParenClose))
+    return parse_error(")", "to end function prototype");
 
-  if (lexer.current_token() != Token::ParenOpen)
-    return parse_error<PrototypeAST>("(", "in prototype");
-  lexer.consume(Token::ParenOpen);
-
-  std::vector<std::unique_ptr<VariableExprAST>> args;
-  if (lexer.current_token() != Token::ParenClose) {
-    while (true) {
-      std::string name(lexer.take_identifier());
-      Location    arg_loc = lexer.last_location();
-      lexer.consume(Token::Identifier);
-      args.push_back(std::make_unique<VariableExprAST>(arg_loc, name));
-      if (lexer.current_token() != Token::Comma) break;
-      lexer.consume(Token::Comma);
-      if (lexer.current_token() != Token::Identifier) {
-        return parse_error<PrototypeAST>(
-            "identifier", "after ',' in function parameter list"
-        );
-      }
-    }
-  }
-  if (lexer.current_token() != Token::ParenClose)
-    return parse_error<PrototypeAST>(")", "to end function prototype");
-
-  // success.
-  lexer.consume(Token::ParenClose);
   return std::make_unique<PrototypeAST>(
       proto_loc, std::move(fn_name), std::move(args)
   );
 }
 
-std::unique_ptr<ModuleAST> Parser::parse_module() {
-  lexer.next_token(); // prime the lexer
-
-  // Parse functions one at a time and accumulate in this vector.
-  std::vector<FunctionAST> functions;
-  while (auto f = parse_definition()) {
-    functions.push_back(std::move(*f));
-    if (lexer.current_token() == Token::EndOfFile) break;
-  }
-  // If we didn't reach EOF, there was an error during parsing
-  if (lexer.current_token() != Token::EndOfFile)
-    return parse_error<ModuleAST>("nothing", "at end of module");
-
-  return std::make_unique<ModuleAST>(std::move(functions));
-}
-
-std::optional<FunctionAST> Parser::parse_definition() {
+std::optional<FunctionAST> Parser::parse_func_def() {
   auto proto = parse_prototype();
   if (!proto) return std::nullopt;
 
@@ -382,7 +399,68 @@ std::optional<FunctionAST> Parser::parse_definition() {
   return std::nullopt;
 }
 
-int Parser::get_tok_precedence() {
+std::optional<StructAST> Parser::parse_struct_def() {
+  Location loc = lexer.last_location();
+  if (!lexer.consume_if(Token::Struct))
+    return parse_error_opt("struct", "in struct definition");
+
+  std::string struct_name;
+  if (auto str_opt = lexer.consume_identifier())
+    struct_name = *std::move(str_opt);
+  else return parse_error_opt("identifier", "in struct definition");
+
+  if (!lexer.consume_if(Token::CurlyBracketOpen))
+    return parse_error_opt('{', "after struct name");
+
+  std::vector<VarDeclExprAST> fields;
+  if (auto fields_opt = parse_field_list(Token::Semicolon, true))
+    fields = *std::move(fields_opt);
+  else return std::nullopt;
+  if (!lexer.consume_if(Token::CurlyBracketClose))
+    return parse_error_opt("}", "to end struct definition");
+
+  if (fields.empty())
+    return parse_error_opt("<something>", "to fill struct definition");
+
+  return std::make_optional<StructAST>(
+      loc, std::move(struct_name), std::move(fields)
+  );
+}
+
+std::unique_ptr<ModuleAST> Parser::parse_module() {
+  lexer.next_token(); // prime the lexer
+
+  if (lexer.current_token() == Token::EndOfFile)
+    return parse_error("code", "in the file");
+
+  std::vector<StructAST>   structs;
+  std::vector<FunctionAST> functions;
+
+  // Parse functions one at a time and accumulate in this vector.
+  while (lexer.current_token() != Token::EndOfFile) {
+    switch (lexer.current_token()) {
+    case Token::Fn:
+      if (auto f = parse_func_def()) functions.push_back(std::move(*f));
+      else return parse_error("function", "after fn token");
+      break;
+    case Token::Struct:
+      if (auto s = parse_struct_def()) structs.push_back(std::move(*s));
+      else return parse_error("struct", "after struct token");
+      break;
+    default:
+      return parse_error(
+          "function|struct|<nothing>", "after previous definition"
+      );
+    }
+  }
+  // If we didn't reach EOF, there was an error during parsing
+  if (lexer.current_token() != Token::EndOfFile)
+    return parse_error("nothing", "at end of module");
+
+  return std::make_unique<ModuleAST>(std::move(structs), std::move(functions));
+}
+
+i32 Parser::get_tok_precedence() {
   i32 tok = std::to_underlying(lexer.current_token());
   if (!::isascii(tok)) return -1;
 
@@ -391,20 +469,21 @@ int Parser::get_tok_precedence() {
   case '-':
   case '+': return 20;
   case '*': return 40;
+  case '.': return 60;
   default: return -1;
   }
 }
 
-template<typename R, typename T, typename U>
-std::unique_ptr<R> Parser::parse_error(T&& expected, U&& context) {
+template<typename T, typename U>
+std::nullptr_t Parser::parse_error(T&& expected, U&& context) {
   error(std::forward<T>(expected), std::forward<U>(context));
-  return {};
+  return nullptr;
 }
 
-template<typename R, typename T, typename U>
-std::optional<R> Parser::parse_error_opt(T&& expected, U&& context) {
+template<typename T, typename U>
+std::nullopt_t Parser::parse_error_opt(T&& expected, U&& context) {
   error(std::forward<T>(expected), std::forward<U>(context));
-  return {};
+  return std::nullopt;
 }
 
 template<typename T, typename U>

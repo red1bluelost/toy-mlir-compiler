@@ -13,9 +13,9 @@
 #include <mlir/IR/Verifier.h>
 
 #include <ctl/object/numerics.hpp>
-#include <range/v3/view/zip.hpp>
 
 #include <numeric>
+#include <ranges>
 #include <string_view>
 
 namespace {
@@ -80,7 +80,7 @@ class MLIRGenImpl {
 
   /// Build an MLIR type from a Toy AST variable type (forward to the generic
   /// getType above).
-  mlir::Type type_of(const toy::VarType& type) { return type_of(type.shape); }
+  mlir::Type type_of(const toy::VarType& type) { return type_of(type.shape()); }
 
   /// Recursive helper function to accumulate the data that compose an array
   /// literal. It flattens the nested structure in the supplied vector. For
@@ -133,9 +133,12 @@ class MLIRGenImpl {
     mlir::Block& entryBlock = function.front();
 
     // Declare all the function arguments in the symbol table.
-    for (auto [name, value] :
-         ranges::zip_view(func_ast.proto().args(), entryBlock.getArguments())) {
-      if (failed(declare(name->name(), value))) return nullptr;
+    for (auto [name, value] : llvm::zip(
+             func_ast.proto().args()
+                 | std::views::transform(&toy::VarDeclExprAST::name),
+             entryBlock.getArguments()
+         )) {
+      if (failed(declare(name, value))) return nullptr;
     }
 
     // Set the insertion point in the builder to the beginning of the function
@@ -222,7 +225,7 @@ class MLIRGenImpl {
     // We have the initializer value, but in case the variable was declared
     // with specific shape, we emit a "reshape" operation. It will get
     // optimized out later as needed.
-    if (!vardecl.type().shape.empty()) {
+    if (!vardecl.type().shape().empty()) {
       value = builder_.create<mlir::toy::ReshapeOp>(
           loc(vardecl.location()), type_of(vardecl.type()), value
       );

@@ -8,14 +8,35 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <variant>
 #include <vector>
 
 /// Base class for all expression nodes.
 namespace toy {
 
-/// A variable type with shape information.
+/// A variable type with either name or shape information.
 struct VarType {
-  llvm::SmallVector<i64, 2> shape;
+  using ShapeVec        = llvm::SmallVector<i64, 2>;
+  using InternalVariant = std::variant<std::monostate, std::string, ShapeVec>;
+
+  [[nodiscard]] bool is_empty() const {
+    return holds_alternative<std::monostate>(internal);
+  }
+  [[nodiscard]] bool is_name() const {
+    return holds_alternative<std::string>(internal);
+  }
+  [[nodiscard]] bool is_shape() const {
+    return holds_alternative<ShapeVec>(internal);
+  }
+
+  [[nodiscard]] std::string_view name() const {
+    return get<std::string>(internal);
+  }
+  [[nodiscard]] std::span<const i64> shape() const {
+    return get<ShapeVec>(internal);
+  }
+
+  InternalVariant internal;
 };
 
 class ExprAST {
@@ -25,6 +46,7 @@ class ExprAST {
     Return,
     Num,
     Literal,
+    StructLit,
     Var,
     BinOp,
     Call,
@@ -47,7 +69,7 @@ class ExprAST {
 };
 
 /// Block-list of expressions.
-using ExprASTList = std::vector<std::unique_ptr<ExprAST>>;
+using ExprASTList      = std::vector<std::unique_ptr<ExprAST>>;
 using ConstExprASTSpan = std::span<const std::unique_ptr<ExprAST>>;
 
 /// Expression class for numeric literals like "1.0".
@@ -67,7 +89,7 @@ class NumberExprAST : public ExprAST {
   f64 value_;
 };
 
-/// Expression class for a literal value.
+/// Expression class for a literal tensor value.
 class LiteralExprAST : public ExprAST {
  public:
   LiteralExprAST(
@@ -83,11 +105,32 @@ class LiteralExprAST : public ExprAST {
   values() const {
     return values_;
   }
-
   [[nodiscard]] constexpr std::span<const i64> dims() const { return dims_; }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
     return c->getKind() == ExprASTKind::Literal;
+  }
+
+ private:
+  std::vector<std::unique_ptr<ExprAST>> values_;
+  llvm::SmallVector<i64, 2>             dims_;
+};
+
+/// Expression class for a literal struct value.
+class StructLitExprAST : public ExprAST {
+ public:
+  StructLitExprAST(Location loc, std::vector<std::unique_ptr<ExprAST>> values)
+      : ExprAST(ExprASTKind::StructLit, loc)
+      , values_(std::move(values)) {}
+
+  [[nodiscard]] constexpr std::span<const std::unique_ptr<ExprAST>>
+  values() const {
+    return values_;
+  }
+  [[nodiscard]] constexpr std::span<const i64> dims() const { return dims_; }
+
+  [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
+    return c->getKind() == ExprASTKind::StructLit;
   }
 
  private:
@@ -118,8 +161,8 @@ class VarDeclExprAST : public ExprAST {
   VarDeclExprAST(
       Location                 loc,
       std::string              name,
-      VarType                  type,
-      std::unique_ptr<ExprAST> init_val
+      VarType                  type     = {},
+      std::unique_ptr<ExprAST> init_val = nullptr
   )
       : ExprAST(ExprASTKind::VarDecl, loc)
       , name_(std::move(name))
@@ -127,9 +170,7 @@ class VarDeclExprAST : public ExprAST {
       , init_val_(std::move(init_val)) {}
 
   [[nodiscard]] constexpr std::string_view name() const { return name_; }
-
   [[nodiscard]] constexpr const ExprAST& init_val() const { return *init_val_; }
-
   [[nodiscard]] constexpr const VarType& type() const { return type_; }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
@@ -173,10 +214,8 @@ class BinaryExprAST : public ExprAST {
       , lhs_(std::move(lhs))
       , rhs_(std::move(rhs)) {}
 
-  [[nodiscard]] constexpr u8 op() const { return op_; }
-
+  [[nodiscard]] constexpr u8             op() const { return op_; }
   [[nodiscard]] constexpr const ExprAST& lhs() const { return *lhs_; }
-
   [[nodiscard]] constexpr const ExprAST& rhs() const { return *rhs_; }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
@@ -201,7 +240,6 @@ class CallExprAST : public ExprAST {
       , args_(std::move(args)) {}
 
   [[nodiscard]] constexpr std::string_view callee() const { return callee_; }
-
   [[nodiscard]] constexpr std::span<const std::unique_ptr<ExprAST>>
   args() const {
     return args_;
@@ -238,27 +276,21 @@ class PrintExprAST : public ExprAST {
 /// function takes).
 class PrototypeAST {
  public:
-  explicit PrototypeAST(
-      Location                                      location,
-      std::string                                   name,
-      std::vector<std::unique_ptr<VariableExprAST>> args
+  explicit constexpr PrototypeAST(
+      Location location, std::string name, std::vector<VarDeclExprAST> args
   )
       : location_(location)
       , name_(std::move(name))
       , args_(std::move(args)) {}
 
-  [[nodiscard]] const Location& location() const { return location_; }
-
+  [[nodiscard]] const Location&  location() const { return location_; }
   [[nodiscard]] std::string_view name() const { return name_; }
-
-  [[nodiscard]] std::span<const std::unique_ptr<VariableExprAST>> args() const {
-    return args_;
-  }
+  [[nodiscard]] std::span<const VarDeclExprAST> args() const { return args_; }
 
  private:
-  Location                                      location_;
-  std::string                                   name_;
-  std::vector<std::unique_ptr<VariableExprAST>> args_;
+  Location                    location_;
+  std::string                 name_;
+  std::vector<VarDeclExprAST> args_;
 };
 
 /// This class represents a function definition itself.
@@ -269,7 +301,6 @@ class FunctionAST {
       , body_(std::move(body)) {}
 
   [[nodiscard]] const PrototypeAST& proto() const { return *proto_; }
-
   [[nodiscard]] std::span<const std::unique_ptr<ExprAST>> body() const {
     return body_;
   }
@@ -279,19 +310,46 @@ class FunctionAST {
   ExprASTList                   body_;
 };
 
+/// This class represents a struct definition.
+class StructAST {
+ public:
+  explicit constexpr StructAST(
+      Location location, std::string name, std::vector<VarDeclExprAST> variables
+  )
+      : location_(location)
+      , name_(std::move(name))
+      , variables_(std::move(variables)) {}
+
+  [[nodiscard]] constexpr const Location& location() const { return location_; }
+  [[nodiscard]] constexpr std::string_view name() const { return name_; }
+  [[nodiscard]] constexpr std::span<const VarDeclExprAST> variables() const {
+    return variables_;
+  }
+
+ private:
+  Location                    location_;
+  std::string                 name_;
+  std::vector<VarDeclExprAST> variables_;
+};
+
 /// This class represents a list of functions to be processed together
 class ModuleAST {
  public:
-  using FuncVector = std::vector<FunctionAST>;
+  explicit constexpr ModuleAST(
+      std::vector<StructAST> structs, std::vector<FunctionAST> functions
+  )
+      : structs_(std::move(structs))
+      , functions_(std::move(functions)) {}
 
-  explicit ModuleAST(std::vector<FunctionAST> functions)
-      : functions_(std::move(functions)) {}
-
-  [[nodiscard]] std::span<const FunctionAST> functions() const {
+  [[nodiscard]] constexpr std::span<const StructAST> structs() const {
+    return structs_;
+  }
+  [[nodiscard]] constexpr std::span<const FunctionAST> functions() const {
     return functions_;
   }
 
  private:
+  std::vector<StructAST>   structs_;
   std::vector<FunctionAST> functions_;
 };
 

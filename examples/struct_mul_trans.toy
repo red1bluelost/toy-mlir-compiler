@@ -1,0 +1,17 @@
+struct Pair {
+  first;
+  second;
+}
+
+fn multiply_transpose(p: Pair) {
+  return transpose(p.first) * transpose(p.second);
+}
+
+fn main() {
+  let p: Pair = {
+    [[1, 2, 3], [4, 5, 6]],
+    [[1, 2, 3], [4, 5, 6]],
+  };
+  let d = multiply_transpose(p);
+  print(d);
+}
