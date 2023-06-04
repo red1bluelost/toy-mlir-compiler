@@ -90,7 +90,7 @@ void ASTDumper::dump(const ExprAST& expr) {
 /// recurse in the initializer value.
 void ASTDumper::dump(const VarDeclExprAST& var_decl) {
   auto i_ = indent();
-  fmt::print("VarDecl {}", var_decl.name());
+  fmt::print("VarDecl {}: ", var_decl.name());
   dump(var_decl.type());
   fmt::println(" {}", var_decl.location());
   dump(var_decl.init_val());
@@ -204,14 +204,13 @@ void ASTDumper::dump(const PrintExprAST& node) {
 
 /// Print type: only the shape is printed in between '<' and '>'
 void ASTDumper::dump(const VarType& type) const {
-  struct Visitor {
-    void operator()(std::monostate) { fmt::print("<>"); }
-    void operator()(std::string_view name) { fmt::print("<{}>", name); }
-    void operator()(std::span<const i64> shape) {
-      fmt::print("<{}>", fmt::join(shape, ", "));
-    }
-  };
-  std::visit(Visitor{}, type.internal);
+  type.apply(
+      [](std::monostate) { fmt::print("<>"); },
+      [](std::string_view name) { fmt::print("<{}>", name); },
+      [](std::span<const i64> shape) {
+        fmt::print("<{}>", fmt::join(shape, ", "));
+      }
+  );
 }
 
 /// Print a function prototype, first the function name, and then the list of
@@ -238,17 +237,17 @@ void ASTDumper::dump(const StructAST& node) {
   auto i_ = indent();
   fmt::println("Struct '{}' {}", node.name(), node.location());
 
-  for (auto field :
-       node.variables(
-       ) | std::views::transform([](const VarDeclExprAST& arg) -> std::string {
-         const VarType& type = arg.type();
-         if (type.is_empty()) return std::string(arg.name());
-         if (type.is_name())
-           return fmt::format("{}: {}", arg.name(), type.name());
-         llvm_unreachable("Unexpected type in prototype args");
-       })) {
+  for (auto data_member :
+       node.data_members()
+           | std::views::transform([](const auto& arg) -> std::string {
+               const VarType& type = arg.type();
+               if (type.is_empty()) return std::string(arg.name());
+               if (type.is_name())
+                 return fmt::format("{}: {}", arg.name(), type.name());
+               llvm_unreachable("Unexpected type in prototype args");
+             })) {
     auto i2_ = indent();
-    fmt::println("- {}", field);
+    fmt::println("- {}", data_member);
   }
 }
 

@@ -8,7 +8,7 @@ namespace toy {
 
 /// This is a simple recursive parser for the Toy language. It produces a well
 /// formed AST from a stream of Token supplied by the Lexer. No semantic checks
-/// or symbol resolution is performed. For example, variables are referenced by
+/// or symbol resolution is performed. For example, data_members are referenced by
 /// string and the code could reference an undeclared variable and the parsing
 /// succeeds.
 class Parser {

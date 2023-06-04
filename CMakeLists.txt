@@ -30,6 +30,11 @@ FetchContent_Declare(range-v3
   GIT_REPOSITORY https://github.com/ericniebler/range-v3.git
   GIT_TAG master)
 FetchContent_MakeAvailable(range-v3)
+set(KUMI_BUILD_TEST OFF CACHE INTERNAL "OFF")
+FetchContent_Declare(kumi
+  GIT_REPOSITORY https://github.com/jfalcou/kumi.git
+  GIT_TAG main)
+FetchContent_MakeAvailable(kumi)
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT supported OUTPUT error)
@@ -92,6 +97,7 @@ add_subdirectory(include/toy/dialect)
 add_subdirectory(lib/transforms)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
 add_library(
   toy_mlir_library
@@ -111,15 +117,23 @@ target_link_libraries(
   range-v3
   ctl::core
   ctl::object
+  kumi::kumi
   ${llvm_libs}
   ${dialect_libs}
+  ${conversion_libs}
+  MLIRAnalysis
+  MLIRBuiltinToLLVMIRTranslation
   MLIRCallInterfaces
   MLIRCastInterfaces
   MLIRExecutionEngine
   MLIRIR
+  MLIRLLVMCommonConversion
+  MLIRLLVMToLLVMIRTranslation
+  MLIRMemRefDialect
   MLIRParser
   MLIRPass
-  MLIRSupport
+  MLIRSideEffectInterfaces
+  MLIRTargetLLVMIRExport
   MLIRTransforms
 )
 add_dependencies(

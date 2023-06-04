@@ -245,17 +245,16 @@ std::optional<VarType> Parser::parse_type() {
   case Token::AngleBracketOpen: {
     lexer.consume(Token::AngleBracketOpen);
 
-    VarType type{VarType::ShapeVec{}};
+    VarType::ShapeVec shape_vec{};
     while (lexer.current_token() == Token::Number) {
-      std::get<VarType::ShapeVec>(type.internal)
-          .push_back(ctl::lossless_cast<i64>(lexer.value()));
+      shape_vec.push_back(ctl::lossless_cast<i64>(lexer.value()));
       lexer.consume(Token::Number);
       lexer.consume_if(Token::Comma);
     }
 
     if (!lexer.consume_if(Token::AngleBracketClose))
       return parse_error_opt(">", "to end type");
-    return type;
+    return VarType{std::move(shape_vec)};
   }
   case Token::Identifier: {
     VarType type{lexer.take_identifier()};
@@ -348,7 +347,7 @@ Parser::parse_field_list(Token separator, bool requires_last) {
     Location    arg_loc = lexer.last_location();
     lexer.consume(Token::Identifier);
 
-    VarType var_type = {};
+    VarType var_type{};
     if (lexer.consume_if(Token::Colon)) {
       if (auto vto = parse_type()) var_type = *std::move(vto);
       else return std::nullopt;

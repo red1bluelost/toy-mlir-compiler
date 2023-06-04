@@ -253,7 +253,7 @@ fn main() {
   let a = [[1, 2, 3], [4, 5, 6]];
 
   # b is identical to a, the literal tensor is implicitly reshaped: defining new
-  # variables is the way to reshape tensors (element count must match).
+  # data_members is the way to reshape tensors (element count must match).
   let b: <2, 3> = [1, 2, 3, 4, 5, 6];
 
   # transpose() and print() are the only builtin, the following will transpose

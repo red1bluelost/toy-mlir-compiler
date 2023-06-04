@@ -150,13 +150,14 @@ int main_process_mlir(mlir::ModuleOp mod) {
   if (failed(mlir::applyPassManagerCLOptions(pm))) return EXIT_FAILURE;
 
   bool is_lowering_to_affine = action >= Action::DumpMLIRAffine;
-  bool is_lowering_to_llvm   = action >= Action::DumpLLVMIR;
+  bool is_lowering_to_llvm   = action >= Action::DumpMLIRLLVM;
 
   if (enable_opt || is_lowering_to_affine) {
     // Inline all functions into main and then delete them.
     pm.addPass(mlir::createInlinerPass());
 
     mlir::OpPassManager& op_pm = pm.nest<mlir::toy::FuncOp>();
+    op_pm.addPass(mlir::createCanonicalizerPass());
     op_pm.addPass(mlir::toy::createShapeInferencePass());
     op_pm.addPass(mlir::createCanonicalizerPass());
     op_pm.addPass(mlir::createCSEPass());

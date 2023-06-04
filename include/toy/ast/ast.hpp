@@ -5,6 +5,8 @@
 
 #include <llvm/ADT/SmallVector.h>
 
+#include <kumi/tuple.hpp>
+
 #include <memory>
 #include <optional>
 #include <span>
@@ -18,6 +20,20 @@ namespace toy {
 struct VarType {
   using ShapeVec        = llvm::SmallVector<i64, 2>;
   using InternalVariant = std::variant<std::monostate, std::string, ShapeVec>;
+
+ private:
+  template<typename Arg>
+  struct is_visitor {
+    template<class Func>
+    struct pred : std::is_invocable<Func, Arg> {};
+  };
+
+ public:
+  explicit VarType() = default;
+  template<class... Args>
+  requires std::constructible_from<ShapeVec, Args...>
+        || std::constructible_from<std::string, Args...>
+  explicit VarType(Args&&... args) : internal(std::forward<Args>(args)...) {}
 
   [[nodiscard]] bool is_empty() const {
     return holds_alternative<std::monostate>(internal);
@@ -36,6 +52,26 @@ struct VarType {
     return get<ShapeVec>(internal);
   }
 
+  [[nodiscard]] std::optional<std::string_view> name_opt() const {
+    if (auto* name = std::get_if<std::string>(&internal)) return *name;
+    return std::nullopt;
+  }
+
+  template<typename... F>
+  auto apply(F&&... f) const {
+    auto funcs = kumi::make_tuple(std::forward<F>(f)...);
+    return std::visit(
+        [&](auto&& v) {
+          constexpr auto idx = kumi::locate(
+              funcs, kumi::predicate<is_visitor<decltype(v)>::template pred>()
+          );
+          return kumi::get<idx>(funcs)(v);
+        },
+        internal
+    );
+  }
+
+ private:
   InternalVariant internal;
 };
 
@@ -161,7 +197,7 @@ class VarDeclExprAST : public ExprAST {
   VarDeclExprAST(
       Location                 loc,
       std::string              name,
-      VarType                  type     = {},
+      VarType                  type     = VarType{},
       std::unique_ptr<ExprAST> init_val = nullptr
   )
       : ExprAST(ExprASTKind::VarDecl, loc)
@@ -314,22 +350,24 @@ class FunctionAST {
 class StructAST {
  public:
   explicit constexpr StructAST(
-      Location location, std::string name, std::vector<VarDeclExprAST> variables
+      Location                    location,
+      std::string                 name,
+      std::vector<VarDeclExprAST> data_members
   )
       : location_(location)
       , name_(std::move(name))
-      , variables_(std::move(variables)) {}
+      , data_members_(std::move(data_members)) {}
 
   [[nodiscard]] constexpr const Location& location() const { return location_; }
   [[nodiscard]] constexpr std::string_view name() const { return name_; }
-  [[nodiscard]] constexpr std::span<const VarDeclExprAST> variables() const {
-    return variables_;
+  [[nodiscard]] constexpr std::span<const VarDeclExprAST> data_members() const {
+    return data_members_;
   }
 
  private:
   Location                    location_;
   std::string                 name_;
-  std::vector<VarDeclExprAST> variables_;
+  std::vector<VarDeclExprAST> data_members_;
 };
 
 /// This class represents a list of functions to be processed together

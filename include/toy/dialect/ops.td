@@ -20,10 +20,21 @@ def Toy_Dialect : Dialect {
     optimization.
   }];
   let cppNamespace = "::mlir::toy";
+
+  let hasConstantMaterializer = 1;
+  let useDefaultTypePrinterParser = 1;
 }
 
 class Toy_Op<string mnemonic, list<Trait> traits = []> :
     Op<Toy_Dialect, mnemonic, traits>;
+
+def Toy_StructType : DialectType<
+  Toy_Dialect,
+  CPred<"::llvm::isa<::mlir::toy::StructType>($_self)">,
+  "Toy struct type"
+>;
+
+def Toy_Type : AnyTypeOf<[F64Tensor, Toy_StructType]>;
 
 //===----------------------------------------------------------------------===//
 // Toy Operations
@@ -33,7 +44,9 @@ class Toy_Op<string mnemonic, list<Trait> traits = []> :
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
-def ConstantOp : Toy_Op<"constant", [Pure]> {
+def ConstantOp : Toy_Op<"constant", [
+  ConstantLike, Pure, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>
+]> {
   let summary = "constant literal value";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached
@@ -60,6 +73,7 @@ def ConstantOp : Toy_Op<"constant", [Pure]> {
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -189,8 +203,8 @@ def GenericCallOp : Toy_Op<"generic_call", [
     arguments.
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<F64Tensor>:$inputs);
-  let results = (outs F64Tensor);
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<Toy_Type>:$inputs);
+  let results = (outs Toy_Type);
 
   let builders = [
     OpBuilder<(ins "StringRef":$callee, "ArrayRef<Value>":$arguments)>
@@ -275,7 +289,7 @@ def ReturnOp : Toy_Op<"return", [Pure, HasParent<"FuncOp">, Terminator]> {
   let summary = "return operation";
   let description = [{
     The "return" operation represents a return operation within a function.
-    The operation takes an optional tensor operand and produces no results.
+    The operation takes an optional operand and produces no results.
     The operand type must match the signature of the function that contains
     the operation. For example:
 
@@ -289,7 +303,7 @@ def ReturnOp : Toy_Op<"return", [Pure, HasParent<"FuncOp">, Terminator]> {
 
   // The return operation takes an optional input operand to return. This
   // value must match the return type of the enclosing function.
-  let arguments = (ins Variadic<F64Tensor>:$input);
+  let arguments = (ins Variadic<Toy_Type>:$input);
 
   // The return operation only emits the input in the format if it is present.
   let assemblyFormat = "($input^ `:` type($input))? attr-dict ";
@@ -326,6 +340,58 @@ def TransposeOp : Toy_Op<"transpose", [
 
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// StructAccessOp
+//===----------------------------------------------------------------------===//
+
+def StructAccessOp : Toy_Op<"struct_access", [Pure]> {
+  let summary = "struct access";
+  let description = [{
+    Access the Nth element of a value returning a struct type.
+  }];
+
+  let arguments = (ins Toy_StructType:$input, I64Attr:$index);
+  let results = (outs Toy_Type:$output);
+
+  let builders = [
+    OpBuilder<(ins "Value":$input, "size_t":$index)>
+  ];
+
+  let assemblyFormat = [{
+    $input `[` $index `]` attr-dict `:` type($input) `->` type($output)
+  }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// StructConstantOp
+//===----------------------------------------------------------------------===//
+
+def StructConstantOp : Toy_Op<"struct_constant", [ConstantLike, Pure]> {
+  let summary = "struct constant";
+  let description = [{
+    Constant operation turns a literal struct value into an SSA value. The data
+    is attached to the operation as an attribute. The struct constant is encoded
+    as an array of other constant values. For example:
+
+    ```mlir
+      %0 = toy.struct_constant [
+        dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf64>
+      ] : !toy.struct<tensor<*xf64>>
+    ```
+  }];
+
+  let arguments = (ins ArrayAttr:$value);
+  let results = (outs Toy_StructType:$output);
+
+  let assemblyFormat = "$value attr-dict `:` type($output)";
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 #endif // TOY_DIALECT_OPS_TD

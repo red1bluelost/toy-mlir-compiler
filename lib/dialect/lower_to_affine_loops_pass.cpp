@@ -45,7 +45,7 @@ static mlir::Value insert_alloc_dealloc(
 /// This defines the function type used to process an iteration of a lowered
 /// loop. It takes as input an OpBuilder, an range of memRefOperands
 /// corresponding to the operands of the input operation, and the range of loop
-/// induction variables for the iteration. It returns a value to store at the
+/// induction data_members for the iteration. It returns a value to store at the
 /// current index of the iteration.
 template<typename Func>
 concept LoopIterationInvocable =
@@ -159,7 +159,7 @@ struct ConstantOpLowering final
     } else {
       auto ops =
           std::views::iota(toy::i64{0}, *std::ranges::max_element(value_shape))
-          | std::views::transform([&](toy::i64 idx) {
+          | std::views::transform([&](toy::i64 idx) -> mlir::Value {
               return rewriter.create<mlir::arith::ConstantIndexOp>(loc, idx);
             });
       constant_indices.append(ops.begin(), ops.end());
