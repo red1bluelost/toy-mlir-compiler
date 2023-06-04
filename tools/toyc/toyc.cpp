@@ -230,12 +230,9 @@ int main_dump_llvm_ir(mlir::ModuleOp mod) {
   return EXIT_SUCCESS;
 }
 
-int main_run_jit(mlir::ModuleOp mod, mlir::MLIRContext& ctx) {
+int main_run_jit(mlir::ModuleOp mod) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
-
-  mlir::registerBuiltinDialectTranslation(ctx);
-  mlir::registerLLVMDialectTranslation(ctx);
 
   auto maybe_engine = mlir::ExecutionEngine::create(
       mod,
@@ -341,9 +338,12 @@ int main(const int argc, const char* argv[]) {
 
     if (action <= Action::DumpMLIRLLVM) return mod->dump(), EXIT_SUCCESS;
 
+    mlir::registerBuiltinDialectTranslation(context);
+    mlir::registerLLVMDialectTranslation(context);
+
     if (action == Action::DumpLLVMIR) return main_dump_llvm_ir(*mod);
 
-    return main_run_jit(*mod, context);
+    return main_run_jit(*mod);
   }
   case Action::None: {
     fmt::println("No action specified (parsing only?), use -emit=<action>");
