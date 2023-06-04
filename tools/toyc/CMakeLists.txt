@@ -10,4 +10,6 @@ target_link_libraries(
   toy_mlir_library
   range-v3
   ${llvm_libs}
+  MLIRAffineTransforms
+  MLIRExecutionEngine
 )

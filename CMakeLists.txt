@@ -98,6 +98,7 @@ add_subdirectory(lib/transforms)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+message(WARNING ${dialect_libs})
 
 add_library(
   toy_mlir_library
@@ -119,19 +120,21 @@ target_link_libraries(
   ctl::object
   kumi::kumi
   ${llvm_libs}
-  ${dialect_libs}
-  ${conversion_libs}
+  MLIRAffineToStandard
   MLIRAnalysis
   MLIRBuiltinToLLVMIRTranslation
   MLIRCallInterfaces
   MLIRCastInterfaces
-  MLIRExecutionEngine
+  MLIRFuncToLLVM
   MLIRIR
   MLIRLLVMCommonConversion
   MLIRLLVMToLLVMIRTranslation
   MLIRMemRefDialect
+  MLIRMemRefToLLVM
   MLIRParser
   MLIRPass
+  MLIRSCFDialect
+  MLIRSCFToControlFlow
   MLIRSideEffectInterfaces
   MLIRTargetLLVMIRExport
   MLIRTransforms
