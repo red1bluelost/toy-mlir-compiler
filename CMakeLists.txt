@@ -96,10 +96,6 @@ include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS})
 add_subdirectory(include/toy/dialect)
 add_subdirectory(lib/transforms)
 
-get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
-message(WARNING ${dialect_libs})
-
 add_library(
   toy_mlir_library
   ${TOY_MLIR_SOURCES}
