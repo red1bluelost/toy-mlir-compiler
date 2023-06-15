@@ -29,6 +29,8 @@
 #include <mlir/Target/LLVMIR/Export.h>
 #include <mlir/Transforms/Passes.h>
 
+#include <tl/optional.hpp>
+
 #include <algorithm>
 #include <optional>
 
@@ -269,12 +271,12 @@ bool validate_arguments() {
 
   // Deduce file type or error for bad arguments
   if (input_type == InputType::Deduce) {
-    auto deduced_input_type = llvm::StringSwitch<std::optional<InputType>>(
+    auto deduced_input_type = llvm::StringSwitch<tl::optional<InputType>>(
                                   sys::path::extension(input_filename)
     )
                                   .Case(".mlir", InputType::MLIR)
                                   .Case(".toy", InputType::Toy)
-                                  .Default(std::nullopt);
+                                  .Default(tl::nullopt);
     if (!deduced_input_type) {
       input_type.error(llvm::Twine(
           "cannot deduce input type from filename: ", input_filename

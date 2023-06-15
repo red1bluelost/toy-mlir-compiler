@@ -239,7 +239,7 @@ std::unique_ptr<ExprAST> Parser::parse_expression() {
   return parse_bin_op_rhs(0, std::move(lhs));
 }
 
-std::optional<VarType> Parser::parse_type() {
+tl::optional<VarType> Parser::parse_type() {
   switch (lexer.current_token()) {
   default: return parse_error_opt("<", "to begin type");
   case Token::AngleBracketOpen: {
@@ -287,7 +287,7 @@ std::unique_ptr<VarDeclExprAST> Parser::parse_declaration() {
   );
 }
 
-std::optional<ExprASTList> Parser::parse_block() {
+tl::optional<ExprASTList> Parser::parse_block() {
   if (!lexer.consume_if(Token::CurlyBracketOpen))
     return parse_error_opt("{", "to begin block");
 
@@ -301,21 +301,21 @@ std::optional<ExprASTList> Parser::parse_block() {
     case Token::Let: {
       // Variable declaration
       auto varDecl = parse_declaration();
-      if (!varDecl) return std::nullopt;
+      if (!varDecl) return tl::nullopt;
       expr_list.push_back(std::move(varDecl));
       break;
     }
     case Token::Return: {
       // Return statement
       auto ret = parse_return();
-      if (!ret) return std::nullopt;
+      if (!ret) return tl::nullopt;
       expr_list.push_back(std::move(ret));
       break;
     }
     default: {
       // General expression
       auto expr = parse_expression();
-      if (!expr) return std::nullopt;
+      if (!expr) return tl::nullopt;
       expr_list.push_back(std::move(expr));
       break;
     }
@@ -335,7 +335,7 @@ std::optional<ExprASTList> Parser::parse_block() {
   return expr_list;
 }
 
-std::optional<std::vector<VarDeclExprAST>>
+tl::optional<std::vector<VarDeclExprAST>>
 Parser::parse_field_list(Token separator, bool requires_last) {
   std::vector<VarDeclExprAST> args;
 
@@ -350,7 +350,7 @@ Parser::parse_field_list(Token separator, bool requires_last) {
     VarType var_type{};
     if (lexer.consume_if(Token::Colon)) {
       if (auto vto = parse_type()) var_type = *std::move(vto);
-      else return std::nullopt;
+      else return tl::nullopt;
       if (!var_type.is_name())
         return parse_error_opt("struct name", "in parameters list");
     }
@@ -389,16 +389,16 @@ std::unique_ptr<PrototypeAST> Parser::parse_prototype() {
   );
 }
 
-std::optional<FunctionAST> Parser::parse_func_def() {
+tl::optional<FunctionAST> Parser::parse_func_def() {
   auto proto = parse_prototype();
-  if (!proto) return std::nullopt;
+  if (!proto) return tl::nullopt;
 
   if (auto block = parse_block())
-    return std::make_optional<FunctionAST>(std::move(proto), *std::move(block));
-  return std::nullopt;
+    return tl::make_optional<FunctionAST>(std::move(proto), *std::move(block));
+  return tl::nullopt;
 }
 
-std::optional<StructAST> Parser::parse_struct_def() {
+tl::optional<StructAST> Parser::parse_struct_def() {
   Location loc = lexer.last_location();
   if (!lexer.consume_if(Token::Struct))
     return parse_error_opt("struct", "in struct definition");
@@ -414,14 +414,14 @@ std::optional<StructAST> Parser::parse_struct_def() {
   std::vector<VarDeclExprAST> fields;
   if (auto fields_opt = parse_field_list(Token::Semicolon, true))
     fields = *std::move(fields_opt);
-  else return std::nullopt;
+  else return tl::nullopt;
   if (!lexer.consume_if(Token::CurlyBracketClose))
     return parse_error_opt("}", "to end struct definition");
 
   if (fields.empty())
     return parse_error_opt("<something>", "to fill struct definition");
 
-  return std::make_optional<StructAST>(
+  return tl::make_optional<StructAST>(
       loc, std::move(struct_name), std::move(fields)
   );
 }
@@ -480,9 +480,9 @@ std::nullptr_t Parser::parse_error(T&& expected, U&& context) {
 }
 
 template<typename T, typename U>
-std::nullopt_t Parser::parse_error_opt(T&& expected, U&& context) {
+tl::nullopt_t Parser::parse_error_opt(T&& expected, U&& context) {
   error(std::forward<T>(expected), std::forward<U>(context));
-  return std::nullopt;
+  return tl::nullopt;
 }
 
 template<typename T, typename U>

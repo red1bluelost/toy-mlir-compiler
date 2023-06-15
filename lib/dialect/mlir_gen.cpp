@@ -486,20 +486,20 @@ class MLIRGenImpl {
     return &iter->second.ast_node;
   }
 
-  std::optional<size_t>
+  tl::optional<size_t>
   get_member_index(const toy::ExprAST& lhs, const toy::ExprAST& rhs) {
     const toy::StructAST* struct_ast = get_struct_for(lhs);
-    if (!struct_ast) return std::nullopt;
+    if (!struct_ast) return tl::nullopt;
 
     auto* name = llvm::dyn_cast<toy::VariableExprAST>(&rhs);
-    if (!name) return std::nullopt;
+    if (!name) return tl::nullopt;
 
     auto       data_members = struct_ast->data_members();
     const auto iter =
         std::ranges::find_if(data_members, [name = name->name()](auto& var) {
           return var.name() == name;
         });
-    if (iter == data_members.end()) return std::nullopt;
+    if (iter == data_members.end()) return tl::nullopt;
     auto dist = std::ranges::distance(data_members.begin(), iter);
     return static_cast<size_t>(dist);
   }
@@ -523,7 +523,7 @@ class MLIRGenImpl {
     if (!lhs) return nullptr;
 
     if (binop.op() == '.') {
-      std::optional<size_t> access_index =
+      tl::optional<size_t> access_index =
           get_member_index(binop.lhs(), binop.rhs());
       if (!access_index) {
         emitError(location, "invalid access into struct expression");

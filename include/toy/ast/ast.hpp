@@ -6,6 +6,7 @@
 #include <llvm/ADT/SmallVector.h>
 
 #include <kumi/tuple.hpp>
+#include <tl/optional.hpp>
 
 #include <memory>
 #include <optional>
@@ -52,9 +53,9 @@ struct VarType {
     return get<ShapeVec>(internal);
   }
 
-  [[nodiscard]] std::optional<std::string_view> name_opt() const {
+  [[nodiscard]] tl::optional<std::string_view> name_opt() const {
     if (auto* name = std::get_if<std::string>(&internal)) return *name;
-    return std::nullopt;
+    return tl::nullopt;
   }
 
   template<typename... F>
@@ -195,10 +196,10 @@ class VariableExprAST : public ExprAST {
 class VarDeclExprAST : public ExprAST {
  public:
   VarDeclExprAST(
-      Location                 loc,
-      std::string              name,
-      VarType                  type     = VarType{},
-      std::unique_ptr<ExprAST> init_val = nullptr
+      Location                               loc,
+      std::string                            name,
+      VarType                                type     = VarType{},
+      tl::optional<std::unique_ptr<ExprAST>> init_val = tl::nullopt
   )
       : ExprAST(ExprASTKind::VarDecl, loc)
       , name_(std::move(name))
@@ -206,7 +207,9 @@ class VarDeclExprAST : public ExprAST {
       , init_val_(std::move(init_val)) {}
 
   [[nodiscard]] constexpr std::string_view name() const { return name_; }
-  [[nodiscard]] constexpr const ExprAST& init_val() const { return *init_val_; }
+  [[nodiscard]] constexpr const ExprAST&   init_val() const {
+    return **init_val_;
+  }
   [[nodiscard]] constexpr const VarType& type() const { return type_; }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
@@ -214,26 +217,30 @@ class VarDeclExprAST : public ExprAST {
   }
 
  private:
-  std::string              name_;
-  VarType                  type_;
-  std::unique_ptr<ExprAST> init_val_;
+  std::string                            name_;
+  VarType                                type_;
+  tl::optional<std::unique_ptr<ExprAST>> init_val_;
 };
 
 /// Expression class for a return operator.
 class ReturnExprAST : public ExprAST {
  public:
-  explicit ReturnExprAST(Location loc, std::unique_ptr<ExprAST> expr = nullptr)
+  explicit ReturnExprAST(
+      Location loc, tl::optional<std::unique_ptr<ExprAST>> expr = tl::nullopt
+  )
       : ExprAST(ExprASTKind::Return, loc)
       , expr_(std::move(expr)) {}
 
-  [[nodiscard]] constexpr const ExprAST* expr() const { return expr_.get(); }
+  [[nodiscard]] constexpr tl::optional<const ExprAST&> expr() const {
+    return expr_.transform([](auto& e) -> const ExprAST& { return *e; });
+  }
 
   [[nodiscard]] static constexpr bool classof(const ExprAST* c) {
     return c->getKind() == ExprASTKind::Return;
   }
 
  private:
-  std::unique_ptr<ExprAST> expr_;
+  tl::optional<std::unique_ptr<ExprAST>> expr_;
 };
 
 /// Expression class for a binary operator.

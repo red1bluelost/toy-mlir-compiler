@@ -35,6 +35,11 @@ FetchContent_Declare(kumi
   GIT_REPOSITORY https://github.com/jfalcou/kumi.git
   GIT_TAG main)
 FetchContent_MakeAvailable(kumi)
+set(OPTIONAL_BUILD_TESTS OFF CACHE INTERNAL "OFF")
+FetchContent_Declare(tl-optional
+  GIT_REPOSITORY https://github.com/TartanLlama/optional.git
+  GIT_TAG master)
+FetchContent_MakeAvailable(tl-optional)
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT supported OUTPUT error)
@@ -115,6 +120,7 @@ target_link_libraries(
   ctl::core
   ctl::object
   kumi::kumi
+  tl::optional
   ${llvm_libs}
   MLIRAffineToStandard
   MLIRAnalysis

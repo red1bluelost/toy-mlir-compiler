@@ -4,8 +4,9 @@
 #include "toy/lexer/location.hpp"
 #include "toy/util/line_reader.hpp"
 
+#include <tl/optional.hpp>
+
 #include <cassert>
-#include <optional>
 
 namespace toy {
 
@@ -78,8 +79,8 @@ class Lexer {
 
   /// Move to next token and return the string if current is an identifier,
   /// otherwise return std::nullopt
-  std::optional<std::string> consume_identifier() {
-    if (Token::Identifier != current_token_) return std::nullopt;
+  tl::optional<std::string> consume_identifier() {
+    if (Token::Identifier != current_token_) return tl::nullopt;
     std::string ret_str = take_identifier();
     next_token();
     return ret_str;

@@ -481,6 +481,14 @@ mlir::CallInterfaceCallable mlir::toy::GenericCallOp::getCallableForCallee() {
   return getOperation()->getAttrOfType<SymbolRefAttr>("callee");
 }
 
+/// Set the callee for the generic call operation, this is required by the call
+/// interface.
+void mlir::toy::GenericCallOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee
+) {
+  getOperation()->setAttr("callee", callee.get<SymbolRefAttr>());
+}
+
 /// Get the argument operands to the called function, this is required by the
 /// call interface.
 mlir::Operation::operand_range mlir::toy::GenericCallOp::getArgOperands() {

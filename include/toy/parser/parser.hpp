@@ -4,13 +4,15 @@
 #include "toy/ast/ast.hpp"
 #include "toy/lexer/lexer.hpp"
 
+#include <tl/optional.hpp>
+
 namespace toy {
 
 /// This is a simple recursive parser for the Toy language. It produces a well
 /// formed AST from a stream of Token supplied by the Lexer. No semantic checks
-/// or symbol resolution is performed. For example, data_members are referenced by
-/// string and the code could reference an undeclared variable and the parsing
-/// succeeds.
+/// or symbol resolution is performed. For example, data_members are referenced
+/// by string and the code could reference an undeclared variable and the
+/// parsing succeeds.
 class Parser {
  public:
   /// Create a Parser for the supplied lexer.
@@ -68,7 +70,7 @@ class Parser {
 
   /// type ::= < shape_list >
   /// shape_list ::= num | num , shape_list
-  std::optional<VarType> parse_type();
+  tl::optional<VarType> parse_type();
 
   /// Parse a variable declaration, it starts with a `let` keyword followed
   /// by and identifier and an optional type (shape specification) before
@@ -81,7 +83,7 @@ class Parser {
   /// block ::= { expression_list }
   /// expression_list ::= block_expr ; expression_list
   /// block_expr ::= decl | "return" | expr
-  std::optional<ExprASTList> parse_block();
+  tl::optional<ExprASTList> parse_block();
 
   /// Parse a field list for either prototypes or structs.
   ///
@@ -90,7 +92,7 @@ class Parser {
   ///
   /// \param separator Token which comes between each parameter
   /// \param require_last Whether last token should be a separator
-  std::optional<std::vector<VarDeclExprAST>>
+  tl::optional<std::vector<VarDeclExprAST>>
   parse_field_list(Token separator, bool requires_last);
 
   /// prototype ::= fn id '(' decl_list ')'
@@ -100,14 +102,14 @@ class Parser {
   /// `fn` keyword, followed by a block containing a list of expressions.
   ///
   /// func_def ::= prototype block
-  std::optional<FunctionAST> parse_func_def();
+  tl::optional<FunctionAST> parse_func_def();
 
   /// Parse a struct definition, we expect a name with a list of fields. Only
   /// fields with struct types explicitly state their type.
   ///
   /// definition ::= struct id '{' field_list '}'
   /// field_list ::= <empty> | identifier | identifier, decl_list
-  std::optional<StructAST> parse_struct_def();
+  tl::optional<StructAST> parse_struct_def();
 
   /// Get the precedence of the pending binary operator token.
   i32 get_tok_precedence();
@@ -118,7 +120,7 @@ class Parser {
   template<typename T, typename U = const char*>
   std::nullptr_t parse_error(T&& expected, U&& context = "");
   template<typename T, typename U = const char*>
-  std::nullopt_t parse_error_opt(T&& expected, U&& context = "");
+  tl::nullopt_t parse_error_opt(T&& expected, U&& context = "");
   template<typename T, typename U = const char*>
   void error(T&& expected, U&& context = "");
 
